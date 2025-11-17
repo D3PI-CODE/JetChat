@@ -5,14 +5,13 @@ export const User = (sequelize) => {
         'User',
         {
             id: {
-                type: Sequelize.INTEGER,
+                type: Sequelize.UUID,
                 primaryKey: true,
-                autoIncrement: true,
+                defaultValue: Sequelize.UUIDV4,
             },
             username: {
                 type: Sequelize.STRING,
                 allowNull: false,
-                unique: true,
             },
             password: {
                 type: Sequelize.STRING,
@@ -42,6 +41,12 @@ class UserModel {
 
     getUserModel() {
         return this.User;
+    }
+
+    createUser(username, email, password) {
+        return this.User.create({ username,
+            email, 
+            password });
     }
 
     async sync(options = {}) {

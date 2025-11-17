@@ -16,5 +16,19 @@ export const login = async (req, res) => {
         console.error('Error hashing password:', error);
     }
     const userModel = new UserModel(credentialsDB);
-    userModel.getUserModel();
+}
+
+export const register = async (req, res) => {
+    const { username, email, password } = req.body;
+    console.log(`Username: ${username}, Email: ${email}, Password: ${password}`);
+    res.json({
+        message: 'Registration successful',
+    });
+    try {
+        const HashedPassword = await bcrypt.hash(password, 10);
+        console.log(`Hashed Password: ${HashedPassword}`);
+    } catch (error) {
+        console.error('Error hashing password:', error);
+    }
+    const userModel = new UserModel(credentialsDB);
 }

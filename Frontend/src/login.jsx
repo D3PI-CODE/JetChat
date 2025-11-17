@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import './login.css';
+import { useNavigate } from 'react-router-dom';
 
-
-export default function Login() {
+export default function Login({ setAuthStatus }) {
     const [password, setPassword] = useState('');
     const [email, setEmail] = useState('');
-    const [data, setData] = useState(null);
     const [passwordValid, setPasswordValid] = useState(true);
     const [emailValid, setEmailValid] = useState(true);
 
@@ -22,7 +21,7 @@ export default function Login() {
 
     const emailValidation = (event) => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (emailRegex.test(event.target.value)) {
+        if (!emailRegex.test(event.target.value)) {
             setEmailValid(false);
             setEmail(event.target.value);
         } else {
@@ -50,7 +49,10 @@ export default function Login() {
                 }
                 return response.json();
             })
-            .then((data) => setData(data))
+            .then((data) => {
+                const isValid = data.validCredentials; 
+                setAuthStatus(isValid); // Pass the value to the router
+            })
             .catch((error) => console.error('Error:', error));
     };
 
@@ -115,7 +117,7 @@ export default function Login() {
             </form>
             <div className="text-center">
                 <p className="text-sm text-text-subtle">
-                    Don't have an account? <a className="font-semibold text-primary hover:underline" href="#"> Register</a>
+                    Don't have an account? <a className="font-semibold text-primary hover:underline" href="/register"> Register</a>
                 </p>
             </div>
         </div>
