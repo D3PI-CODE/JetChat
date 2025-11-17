@@ -1,7 +1,7 @@
 import Sequelize from 'sequelize';
 
-export const User = (sequelize) => {
-    const UserModel = sequelize.define(
+export const UserAuth = (sequelize) => {
+    const UserAuthModel = sequelize.define(
         'User',
         {
             id: {
@@ -9,17 +9,14 @@ export const User = (sequelize) => {
                 primaryKey: true,
                 defaultValue: Sequelize.UUIDV4,
             },
+            password: {
+                type: Sequelize.STRING,
+                allowNull: false,
+            },
             email: {
                 type: Sequelize.STRING,
                 allowNull: false,
                 unique: true,
-            },
-            username: {
-                type: Sequelize.STRING,
-                allowNull: false
-            },
-            Bio: {
-                type: Sequelize.STRING,
             },
         },
         {
@@ -28,13 +25,13 @@ export const User = (sequelize) => {
         }
     );
 
-    return UserModel;
+    return UserAuthModel;
 };
 
-class UserModel {
+class UserAuthModel {
     constructor(sequelize) {
         this.sequelize = sequelize;
-        this.User = User(sequelize);
+        this.UserAuth = UserAuth(sequelize);
         this.model = sequelize.models;
     }
 
@@ -43,7 +40,7 @@ class UserModel {
     }
 
     createUser(email, password) {
-        return this.User.create({
+        return this.UserAuth.create({
             email, 
             password });
     }
@@ -56,9 +53,19 @@ class UserModel {
                 return user.getDataValue("id");
             });
     }
+    getPassword(UserID) {
+        return this.model.User.findOne({where: {id: UserID}})
+            .then(user => {
+                    if (!user) {
+                        return null
+                    }
+                    return user.getDataValue("password");
+                });
+
+    }
     async sync(options = {}) {
         await this.sequelize.sync(options);
     }
 }
 
-export { UserModel };
+export { UserAuthModel };

@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import routes from './routes/auth.routes.js';
 import cors from 'cors';
 import { initializeCredentialsDB } from './lib/CredentialsDB.js';
+import { UserAuthModel } from './models/userAuth.model.js';
+import { initializeMessagingDB } from './lib/MessagingDB.js';
 import { UserModel } from './models/user.model.js';
 
 dotenv.config();
@@ -15,8 +17,11 @@ app.use(cors());
 app.use("/api/auth", routes);
 
 export const credentialsDB = await initializeCredentialsDB();
-const userModel = new UserModel(credentialsDB);
+export const messagingDB = await initializeMessagingDB();
+const userAuthModel = new UserAuthModel(credentialsDB);
+const userModel = new UserModel(messagingDB);
 userModel.sync()
+userAuthModel.sync()
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
