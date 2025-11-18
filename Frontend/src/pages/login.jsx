@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import './login.css';
 import { NavLink, Navigate, useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { tokens } from '@chakra-ui/react/theme';
 
 export default function Login() {
     const [password, setPassword] = useState('');
@@ -44,6 +45,8 @@ export default function Login() {
                 console.log(isValid)
                 if (isValid) {
                     console.log("Login successful, redirecting to /chat");
+                    const token = response.data.token;
+                    localStorage.setItem('token', token);
                     navigate('/chat');
                     
                 } else {
