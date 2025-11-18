@@ -1,0 +1,8 @@
+#backend
+Backend/node_modules
+
+# Frontend
+Frontend/node_modules
+
+#env files
+Backend/.env
