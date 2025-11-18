@@ -3,6 +3,7 @@ import Register from '../pages/register.jsx';
 import Login from '../pages/login.jsx';
 import NotFound from '../pages/NotFound.jsx';
 import { ProtectedRoute } from './protectedRoute.jsx';
+import Chat from '../pages/chat.jsx';
 
 export default function AppRouter() {
     return (
@@ -13,7 +14,7 @@ export default function AppRouter() {
                 <Route path="/" element={<Navigate to="/login" replace />} />
                 <Route path="*" element={<NotFound />} />
                 <Route element={<ProtectedRoute />}>
-                    <Route path="/chat" element={<div>Chat Component Placeholder</div>} />
+                    <Route path="/chat" element={<Chat />} />
                 </Route>
             </Routes>
         </Router>
