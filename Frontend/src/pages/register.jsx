@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import './register.css';
+import axios from 'axios';
+import { NavLink, useNavigate } from 'react-router-dom';
 
 export default function Register() {
   const [password, setPassword] = useState('');
@@ -9,6 +11,7 @@ export default function Register() {
   const [passwordValid, setPasswordValid] = useState(true);
   const [emailValid, setEmailValid] = useState(true);
   const [usernameValid, setUsernameValid] = useState(true);
+  const navigate = useNavigate();
 
   const passwordValidation = (event) => {
     const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
@@ -39,26 +42,22 @@ export default function Register() {
   const handleSubmit = (event) => {
       if (!passwordValid || !emailValid || !usernameValid) return;
       event.preventDefault(); // Prevent default form submission
-      fetch('/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username : username,
-          email: email,
-          password: password,
-        }),
+      axios.post('/api/auth/register', {
+        username: username,
+        email: email,
+        password: password,
       })
       .then((response) => {
-        if (!response.ok) {
+        if (!response.status === 200) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        return response.json();
+        console.log(response.data.message);
+        if (response.data.message == "Registration successful") {
+          return navigate("/login");
+        }
       })
-      .then((data) => setData(data))
-      .catch((error) => console.error('Error:', error));
   };
+
   return (
     <div className="w-full max-w-md space-y-8 rounded-xl bg-[#D9D9D9] p-8 md:p-12 shadow-2xl">
       <div className="text-center">
@@ -135,7 +134,7 @@ export default function Register() {
       </form>
       <div className="text-center">
         <p className="text-sm text-text-subtle">
-          Already have an account? <a className="font-semibold text-primary hover:underline" href="/login"> Log in</a>
+          Already have an account? <NavLink className="font-semibold text-primary hover:underline" to="/login"> Log in</NavLink>
         </p>
       </div>
     </div>

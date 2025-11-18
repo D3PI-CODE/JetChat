@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import './login.css';
-import { useNavigate } from 'react-router-dom';
+import { NavLink, Navigate, useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
-export default function Login({ setAuthStatus }) {
+export default function Login() {
     const [password, setPassword] = useState('');
     const [email, setEmail] = useState('');
     const [passwordValid, setPasswordValid] = useState(true);
     const [emailValid, setEmailValid] = useState(true);
+    const navigate = useNavigate();
 
     const passwordValidation = (event) => {
         const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
@@ -33,25 +35,20 @@ export default function Login({ setAuthStatus }) {
     const handleSubmit = (event) => {
         if (!passwordValid || !emailValid) return;
         event.preventDefault(); // Prevent default form submission
-        fetch('/api/auth/login', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                email: email,
-                password: password,
-            }),
+        axios.post('/api/auth/login', {
+            email: email,
+            password: password,
         })
-            .then((response) => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+        .then((response) => {
+                const isValid = response.data.validCredentials;
+                console.log(isValid)
+                if (isValid) {
+                    console.log("Login successful, redirecting to /chat");
+                    navigate('/chat');
+                    
+                } else {
+                    alert('Invalid email or password.');
                 }
-                return response.json();
-            })
-            .then((data) => {
-                const isValid = data.validCredentials; 
-                setAuthStatus(isValid); // Pass the value to the router
             })
             .catch((error) => console.error('Error:', error));
     };
@@ -117,7 +114,7 @@ export default function Login({ setAuthStatus }) {
             </form>
             <div className="text-center">
                 <p className="text-sm text-text-subtle">
-                    Don't have an account? <a className="font-semibold text-primary hover:underline" href="/register"> Register</a>
+                    Don't have an account? <NavLink className="font-semibold text-primary hover:underline" to="/register"> Register</NavLink>
                 </p>
             </div>
         </div>
