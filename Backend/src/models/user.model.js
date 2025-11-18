@@ -20,6 +20,7 @@ export const User = (sequelize) => {
             },
             Bio: {
                 type: Sequelize.STRING,
+                defaultValue: '',
             },
         },
         {
@@ -39,13 +40,14 @@ class UserModel {
     }
 
     getUserModel() {
-        return this.UserAuth;
+        return this.User;
     }
 
-    createUser(email, password) {
+    createUser(email, username) {
         return this.User.create({
             email, 
-            password });
+            username,
+        });
     }
     emailSearch(email) {
         return this.model.User.findOne({ where: { email: email } })

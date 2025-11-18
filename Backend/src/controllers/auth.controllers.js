@@ -9,6 +9,13 @@ export const login = async (req, res) => {
     console.log(`Email: ${email}, Password: ${password}`);
     const userAuthModel = new UserAuthModel(credentialsDB);
     const userId = await userAuthModel.emailSearch(email);
+    if (!userId) {
+        res.json({
+            validCredentials: false,
+        });
+        return;
+    }
+    
     const userPass = await userAuthModel.getPassword(userId);
     const isPassValid = await bcrypt.compare(password, userPass);
     if (isPassValid) {
@@ -42,5 +49,6 @@ export const register = async (req, res) => {
     const userId = await userAuthModel.emailSearch(email);
     if (!userId) {
         userAuthModel.createUser(email, HashedPassword);
+        userModel.createUser(email, username);
     }
 }
