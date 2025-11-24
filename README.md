@@ -1,5 +1,15 @@
 # JetChat — Realtime Messaging, Simplified
 
+<!-- Tech stack badges -->
+[![React](https://img.shields.io/badge/React-v18%2B-61DAFB?style=for-the-badge&logo=react&logoColor=white)](https://reactjs.org)
+[![Vite](https://img.shields.io/badge/Vite-%E2%9A%A1-v646cff?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-06B6D4?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
+[![Node.js](https://img.shields.io/badge/Node.js-v18%2B-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org)
+[![Express](https://img.shields.io/badge/Express-4.x-000000?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com)
+[![Socket.IO](https://img.shields.io/badge/Socket.IO-4.x-010101?style=for-the-badge&logo=socketdotio&logoColor=white)](https://socket.io)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-13%2B-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org)
+
+
 JetChat is a lightweight, beautiful realtime chat application built with React (Vite) on the frontend and Node.js + Socket.IO on the backend. It's designed for fast prototyping and clear, maintainable messaging flows.
 
 ---
