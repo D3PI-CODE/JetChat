@@ -50,13 +50,15 @@ class UserModel {
         });
     }
     emailSearch(email) {
+        if (!email) {
+            // Avoid passing undefined into Sequelize WHERE
+            console.warn('UserModel.emailSearch called with falsy email:', email);
+            return Promise.resolve(null);
+        }
         return this.model.User.findOne({ where: { email: email } })
-            .then(user => {
-                if (!user) {
-                    return null
-                }
-                return user.getDataValue("id");
-            });
+            .then((user)=> {
+                return user ? user.getDataValue("id") : null;
+            })
     }
     async sync(options = {}) {
         await this.sequelize.sync(options);

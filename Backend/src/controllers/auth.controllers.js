@@ -8,6 +8,10 @@ import jwt from 'jsonwebtoken';
 export const login = async (req, res) => {
     const { email, password } = req.body;
     console.log(`Email: ${email}, Password: ${password}`);
+    if (!email || !password) {
+        console.error('Missing email or password in login request', { email, password });
+        return res.status(400).json({ validCredentials: false, error: 'Missing email or password' });
+    }
     const userAuthModel = new UserAuthModel(credentialsDB);
     const userModel = new UserModel(messagingDB);
     const userId = await userAuthModel.emailSearch(email);
@@ -44,6 +48,10 @@ export const login = async (req, res) => {
 export const register = async (req, res) => {
     const { username, email, password } = req.body;
     console.log(`Username: ${username}, Email: ${email}, Password: ${password}`);
+    if (!username || !email || !password) {
+        console.error('Missing registration fields', { username, email, password });
+        return res.status(400).json({ message: 'Missing registration fields' });
+    }
     res.json({
         message: 'Registration successful',
     });
@@ -64,8 +72,12 @@ export const register = async (req, res) => {
 
 export const validateToken = async (req, res) => {
     const userModel = new UserModel(messagingDB);
-    const email = req.user.email;
+    const email = req.user && req.user.email;
     console.log(`Validating token for email: ${email}`);
+    if (!email) {
+        console.error('validateToken: no email found on req.user', { user: req.user });
+        return res.status(400).json({ valid: false, error: 'No email in token' });
+    }
     const userId = await userModel.emailSearch(email);
     if (userId === req.user.id) {
         res.json(

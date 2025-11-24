@@ -11,7 +11,7 @@ export default function AppRouter() {
             <Routes>
                 <Route path="/register" element={<Register />} />
                 <Route path="/login" element={<Login />} />
-                <Route path="/" element={<Navigate to="/login" replace />} />
+                <Route path="/" element={<Navigate to="/chat" replace />} />
                 <Route path="*" element={<NotFound />} />
                 <Route element={<ProtectedRoute />}>
                     <Route path="/chat" element={<Chat />} />

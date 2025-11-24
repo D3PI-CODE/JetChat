@@ -45,6 +45,10 @@ class UserAuthModel {
             password });
     }
     emailSearch(email) {
+        if (!email) {
+            console.warn('UserAuthModel.emailSearch called with falsy email:', email);
+            return Promise.resolve(null);
+        }
         return this.model.User.findOne({ where: { email: email } })
             .then(user => {
                 if (!user) {
@@ -54,6 +58,10 @@ class UserAuthModel {
             });
     }
     getPassword(UserID) {
+        if (!UserID) {
+            console.warn('UserAuthModel.getPassword called with falsy UserID:', UserID);
+            return Promise.resolve(null);
+        }
         return this.model.User.findOne({where: {id: UserID}})
             .then(user => {
                     if (!user) {
