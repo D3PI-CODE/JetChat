@@ -18,6 +18,10 @@ export const User = (sequelize) => {
                 type: Sequelize.STRING,
                 allowNull: false
             },
+            avatarUrl: {
+                type: Sequelize.STRING,
+                allowNull: true,
+            },
             Bio: {
                 type: Sequelize.STRING,
                 defaultValue: '',

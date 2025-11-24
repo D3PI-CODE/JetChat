@@ -18,6 +18,8 @@ export default function Chat() {
     const [activeChat, setActiveChat] = useState(null);
     const textpanel = useRef(null);
     const activeChatRef = useRef(activeChat);
+    const [profileImage, setProfileImage] = useState(null);
+    const fileInputRef = useRef(null);
 
     const changeMessage = (e) => {
         setMessage(e.target.value);
@@ -26,6 +28,27 @@ export default function Chat() {
     const LogOut = () => {
         localStorage.removeItem('token');
         window.location.href = '/login';
+    }
+
+    const imageUploader = () => {
+        // open native file picker
+        if (fileInputRef.current) fileInputRef.current.click();
+    }
+
+    const handleImageChange = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            // save data URL in state (variable), can be uploaded to server later
+            setProfileImage(reader.result);
+            const myEmail = localStorage.getItem('email');
+            if (socketRef.current && myEmail) {
+                socketRef.current.emit("changeProfilePic", { imageData: reader.result, email: myEmail });
+            }
+        };
+        reader.readAsDataURL(file);
     }
 
     useEffect(() => {
@@ -47,6 +70,7 @@ export default function Chat() {
             const processed = (usersList || []).map((user) => ({
                 username: user.username ?? user.email,
                 email: user.email,
+                avatarUrl: user.avatarUrl || null,
                 userID: user.id ?? user.email,
                 socketIds: user.socketIds || [],
                 online: !!user.online,
@@ -63,9 +87,24 @@ export default function Chat() {
             });
 
             setUsers(processed);
+            // if current user has an avatar provided by server, use it
+            const myEmail = localStorage.getItem('email');
+            const me = processed.find(u => u.email === myEmail);
+            if (me && me.avatarUrl) setProfileImage(me.avatarUrl);
             console.log('Connected users:', processed);
         };
         socket.on("users", usrMangement);
+
+        // When server confirms a profile picture update, update local state immediately
+        const handleProfilePicUpdated = (data) => {
+            if (!data || !data.email) return;
+            setUsers((prev) => prev.map(u => u.email === data.email ? { ...u, avatarUrl: data.avatarUrl } : u));
+            const myEmailLocal = localStorage.getItem('email');
+            if (data.email === myEmailLocal && data.avatarUrl) {
+                setProfileImage(data.avatarUrl);
+            }
+        };
+        socket.on('profilePicUpdated', handleProfilePicUpdated);
 
         // When the server sends previous messages (merged payload)
         socket.on('previousMessages', (data) => {
@@ -136,6 +175,8 @@ export default function Chat() {
             socket.off('previousMessagesError');
             socket.off('connect');
             socket.off('disconnect');
+            socket.off('users', usrMangement);
+            socket.off('profilePicUpdated', handleProfilePicUpdated);
         };
     }, []);
 
@@ -202,7 +243,8 @@ export default function Chat() {
             <aside className="flex h-screen w-20 flex-col items-center justify-between border-r border-transparent bg-[#0d1212] p-4">
                 <div className="flex flex-col items-center gap-8">
                     <div className="relative">
-                        <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12" style={{backgroundImage: `url('https://placehold.co/12')`}}></div>
+                        <div onClick={imageUploader} className="profilePic bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12" style={{backgroundImage: profileImage ? `url('${profileImage}')` : `url('https://placehold.co/12')`}}></div>
+                        <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageChange} />
                     </div>
                 </div>
                 <div className="flex flex-col items-center gap-4">
@@ -235,7 +277,7 @@ export default function Chat() {
                             <div key={u.userID} onClick={() => setActiveChat(u)} className={`flex cursor-pointer gap-4 px-4 py-3 justify-between ${activeChat?.userID === u.userID ? 'bg-[#137fec]/20 dark:bg-[#137fec]/30 border-r-4 border-[#137fec]' : ''}`}>
                                 <div className="flex items-center gap-4">
                                     <div className="relative shrink-0">
-                                        <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-14 h-14" style={{backgroundImage: `url('https://placehold.co/14')`}}></div>
+                                        <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-14 h-14" style={{backgroundImage: u.avatarUrl ? `url('${u.avatarUrl}')` : `url('https://placehold.co/14')`}}></div>
                                         <span className={`absolute bottom-0 right-0 block h-3.5 w-3.5 rounded-full border-2 border-white dark:border-[#0f1720] ${u.online ? 'bg-[#10B981]' : 'bg-gray-400 dark:bg-gray-600'}`}></span>
                                     </div>
                                     <div className="flex flex-1 flex-col justify-center">
@@ -258,7 +300,7 @@ export default function Chat() {
                 <header className="flex shrink-0 items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111818] px-6 py-4">
                     <div className="flex items-center gap-4">
                         <div className="relative">
-                            <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12" style={{backgroundImage: `url('https://placehold.co/12')`}}></div>
+                                <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12" style={{backgroundImage: activeChat?.avatarUrl ? `url('${activeChat.avatarUrl}')` : `url('https://placehold.co/12')`}}></div>
                         </div>
                         <div>
                             <h2 className="text-lg font-semibold text-[#1F2937] dark:text-white">{activeChat?.username ?? 'Select a chat'}</h2>

@@ -1,5 +1,5 @@
+import 'dotenv/config';
 import express from 'express';
-import dotenv from 'dotenv';
 import routes from './routes/auth.routes.js';
 import cors from 'cors';
 import { initializeCredentialsDB } from './lib/CredentialsDB.js';
@@ -11,7 +11,6 @@ import http from "http";
 import { connection} from './controllers/socket.controllers.js';
 import { MessageModel } from './models/message.model.js';
 
-dotenv.config();
 const app = express();
 const server = http.createServer(app);
 export const io = new Server(server, {
@@ -37,7 +36,8 @@ export const messagingDB = await initializeMessagingDB();
 const userAuthModel = new UserAuthModel(credentialsDB);
 const userModel = new UserModel(messagingDB);
 const messageModel = new MessageModel(messagingDB);
-await userModel.sync();
+// ensure DB schema updates (adds avatarUrl if missing)
+await userModel.sync({ alter: true });
 await userAuthModel.sync();
 await messageModel.sync();
 
