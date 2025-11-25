@@ -1,4 +1,6 @@
 import React from 'react';
+import { RiCheckDoubleLine } from "react-icons/ri";
+
 
 export default function Textbubble({ messages = [], activeChat = null }) {
     // Debug helper: uncomment to log
@@ -25,7 +27,7 @@ export default function Textbubble({ messages = [], activeChat = null }) {
                                 <div className="rounded-xl rounded-br-none bg-[#0e5555] p-3 text-white max-w-xl shadow-sm">
                                     <p className="text-sm">{content}</p>
                                 </div>
-                                <span className="text-xs text-gray-400 dark:text-gray-500">{ts ? new Date(ts).toLocaleTimeString() : ''} <span className="material-symbols-outlined text-sm text-[#137fec]"></span></span>
+                                <span className="text-xs text-gray-400 dark:text-gray-500 flex gap-2">{ts ? new Date(ts).toLocaleTimeString() : ''} <RiCheckDoubleLine className="material-symbols-outlined text-sm text-[#137fec]"/> </span> 
                             </div>
                         </div>
                     );
