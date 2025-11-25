@@ -20,3 +20,6 @@ Backend/dist
 # System files
 .DS_Store
 Thumbs.db
+
+# react
+Frontend/.flowbite-react
