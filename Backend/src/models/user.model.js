@@ -5,23 +5,26 @@ export const User = (sequelize) => {
         'User',
         {
             id: {
-                type: Sequelize.INTEGER,
+                type: Sequelize.UUID,
                 primaryKey: true,
-                autoIncrement: true,
-            },
-            username: {
-                type: Sequelize.STRING,
-                allowNull: false,
-                unique: true,
-            },
-            password: {
-                type: Sequelize.STRING,
-                allowNull: false,
+                defaultValue: Sequelize.UUIDV4,
             },
             email: {
                 type: Sequelize.STRING,
                 allowNull: false,
                 unique: true,
+            },
+            username: {
+                type: Sequelize.STRING,
+                allowNull: false
+            },
+            avatarUrl: {
+                type: Sequelize.STRING,
+                allowNull: true,
+            },
+            Bio: {
+                type: Sequelize.STRING,
+                defaultValue: '',
             },
         },
         {
@@ -37,13 +40,30 @@ class UserModel {
     constructor(sequelize) {
         this.sequelize = sequelize;
         this.User = User(sequelize);
-        this.models = sequelize.models;
+        this.model = sequelize.models;
     }
 
     getUserModel() {
         return this.User;
     }
 
+    createUser(email, username) {
+        return this.User.create({
+            email, 
+            username,
+        });
+    }
+    emailSearch(email) {
+        if (!email) {
+            // Avoid passing undefined into Sequelize WHERE
+            console.warn('UserModel.emailSearch called with falsy email:', email);
+            return Promise.resolve(null);
+        }
+        return this.model.User.findOne({ where: { email: email } })
+            .then((user)=> {
+                return user ? user.getDataValue("id") : null;
+            })
+    }
     async sync(options = {}) {
         await this.sequelize.sync(options);
     }
