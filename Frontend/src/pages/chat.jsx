@@ -14,12 +14,13 @@ export default function Chat() {
     const [textMessage, setTextMessage] = useState([]);
     const [users, setUsers] = useState([]);
     const socketRef = useRef(null);
-    let visibleUsers = users.filter((u) => !u.self);
+    const [visibleUsers, setVisibleUsers] = useState(users.filter((u) => !u.self));
     const [activeChat, setActiveChat] = useState(null);
     const textpanel = useRef(null);
     const activeChatRef = useRef(activeChat);
     const [profileImage, setProfileImage] = useState(null);
     const fileInputRef = useRef(null);
+    const [activeUser, setActiveUser] = useState(null);
 
     const changeMessage = (e) => {
         setMessage(e.target.value);
@@ -91,7 +92,22 @@ export default function Chat() {
             const myEmail = localStorage.getItem('email');
             const me = processed.find(u => u.email === myEmail);
             if (me && me.avatarUrl) setProfileImage(me.avatarUrl);
+            setVisibleUsers(processed.filter((u) => !u.self));
             console.log('Connected users:', processed);
+
+            const currentActive = activeChatRef.current;
+            if (currentActive) {
+                const updated = processed.find(u => (u.email && currentActive.email && u.email === currentActive.email) || (u.userID && currentActive.userID && u.userID === currentActive.userID));
+                if (updated) {
+                    // replace activeChat so socketIds (and other fields) stay current
+                    setActiveChat(updated);
+                    activeChatRef.current = updated;
+                } else {
+                    // if the user disappeared (logged out), clear active chat
+                    setActiveChat(null);
+                    activeChatRef.current = null;
+                }
+            }
         };
         socket.on("users", usrMangement);
 
@@ -164,7 +180,7 @@ export default function Chat() {
 
     socket.on('receiveMessage', handleReceive);
     socket.on('sentMessageAck', handleSent);
-    visibleUsers = users.filter((u) => !u.self)
+    setVisibleUsers(users.filter((u) => !u.self));
     
         socket.on('connect', () => console.log('socket connected', socket.id));
         socket.on('disconnect', (reason) => console.log('socket disconnected', reason)); 
@@ -274,7 +290,9 @@ export default function Chat() {
                         <div className="p-4 text-sm text-gray-500">No users found</div>
                     ) : (
                         visibleUsers.map((u) => (
-                            <div key={u.userID} onClick={() => setActiveChat(u)} className={`flex cursor-pointer gap-4 px-4 py-3 justify-between ${activeChat?.userID === u.userID ? 'bg-[#137fec]/20 dark:bg-[#137fec]/30 border-r-4 border-[#137fec]' : ''}`}>
+                            <div key={u.userID} onClick={() => {
+                                setActiveChat(u) 
+                                setActiveUser(u.userID)}} className={`flex cursor-pointer gap-4 px-4 py-3 justify-between ${activeChat?.userID === u.userID ? 'bg-[#137fec]/20 dark:bg-[#137fec]/30 border-r-4 border-[#137fec]' : ''}`}>
                                 <div className="flex items-center gap-4">
                                     <div className="relative shrink-0">
                                         <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-14 h-14" style={{backgroundImage: u.avatarUrl ? `url('${u.avatarUrl}')` : `url('https://placehold.co/14')`}}></div>
