@@ -1,15 +1,13 @@
 import React, { useState } from 'react';
 import './login.css';
-import { NavLink, Navigate, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import { tokens } from '@chakra-ui/react/theme';
+
 
 export default function Login() {
     const [password, setPassword] = useState('');
     const [email, setEmail] = useState('');
+    const [data, setData] = useState(null);
     const [passwordValid, setPasswordValid] = useState(true);
     const [emailValid, setEmailValid] = useState(true);
-    const navigate = useNavigate();
 
     const passwordValidation = (event) => {
         const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
@@ -24,7 +22,7 @@ export default function Login() {
 
     const emailValidation = (event) => {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(event.target.value)) {
+        if (emailRegex.test(event.target.value)) {
             setEmailValid(false);
             setEmail(event.target.value);
         } else {
@@ -36,24 +34,23 @@ export default function Login() {
     const handleSubmit = (event) => {
         if (!passwordValid || !emailValid) return;
         event.preventDefault(); // Prevent default form submission
-        axios.post('/api/auth/login', {
-            email: email,
-            password: password,
+        fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                email: email,
+                password: password,
+            }),
         })
-        .then((response) => {
-                const isValid = response.data.validCredentials;
-                console.log(isValid)
-                if (isValid) {
-                    console.log("Login successful, redirecting to /chat");
-                    const token = response.data.token;
-                    localStorage.setItem('token', token);
-                    localStorage.setItem('email', email);
-                    navigate('/chat');
-                    
-                } else {
-                    alert('Invalid email or password.');
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
+                return response.json();
             })
+            .then((data) => setData(data))
             .catch((error) => console.error('Error:', error));
     };
 
@@ -118,7 +115,7 @@ export default function Login() {
             </form>
             <div className="text-center">
                 <p className="text-sm text-text-subtle">
-                    Don't have an account? <NavLink className="font-semibold text-primary hover:underline" to="/register"> Register</NavLink>
+                    Don't have an account? <a className="font-semibold text-primary hover:underline" href="#"> Register</a>
                 </p>
             </div>
         </div>
