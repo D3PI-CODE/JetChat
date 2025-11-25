@@ -137,10 +137,18 @@ export const changeProfilePic = async (socket, data) => {
         }
 
         // Ensure imageData is a data URL. If it's plain base64, prefix it so Cloudinary accepts it.
-        let payload = data.imageData;
-        if (/^[A-Za-z0-9+/]+=*$/.test(payload) && !payload.startsWith('data:')) {
-            // heuristic: base64 without data URI header -> assume jpeg
-            payload = `data:image/jpeg;base64,${payload}`;
+        let payload = data.imageData && typeof data.imageData === 'string' ? data.imageData.trim() : '';
+        const base64Only = /^[A-Za-z0-9+/]+={0,2}$/.test(payload) && !payload.startsWith('data:');
+        if (base64Only) {
+            // Heuristic to detect image type from base64 signature
+            const sig = payload.slice(0, 8);
+            let mime = 'image/jpeg';
+            if (sig.startsWith('/9j')) mime = 'image/jpeg';            // JPEG
+            else if (sig.startsWith('iVBOR')) mime = 'image/png';     // PNG (iVBORw0K...)
+            else if (sig.startsWith('R0lG')) mime = 'image/gif';      // GIF
+            else if (sig.startsWith('UklG') || sig.startsWith('RIFF')) mime = 'image/webp'; // WEBP
+            // default to jpeg if unknown
+            payload = `data:${mime};base64,${payload}`;
         }
 
         // log payload info (don't log full base64)

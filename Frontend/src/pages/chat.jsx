@@ -311,7 +311,7 @@ export default function Chat() {
 
                 <div ref={textpanel} className="flex-1 overflow-y-auto p-6 space-y-6">
                     {/*text messages*/}
-                    <Textbubble messages={filteredMessages} />
+                    <Textbubble messages={filteredMessages} activeChat={activeChat}/>
                 </div>
 
                 <footer className="bg-white dark:bg-[#111818] p-4 border-t border-gray-200 dark:border-gray-800">
