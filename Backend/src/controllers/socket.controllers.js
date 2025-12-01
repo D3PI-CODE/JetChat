@@ -130,7 +130,10 @@ export const sendMessage = async (data) => {
         read: false,
     }
     console.log("the msg is being sent to", data.to)
-    io.to(data.to).emit("receiveMessage", mappedData);
+    if (data.to == []) {
+        io.to(data.to).emit("receiveMessage", mappedData);
+        console.log("Message sent to specific socket:", mappedData);
+    }
     io.to(data.from).emit("sentMessage", mappedData);
     console.log(mappedData);
 };
