@@ -7,9 +7,6 @@ export const connection =  (socket) => {
     console.log("a user connected: " + socket.id);
     socket.email = socket.handshake.auth.email;
     console.log("User email: " + socket.email);
-  // Build and broadcast a list of all application users with online status.
-  // This ensures that when a user disconnects (logs out) they remain visible
-  // to clients but are marked as offline.
     const broadcastUserIds = async () => {
         try {
             const userModel = new UserModel(messagingDB);
@@ -34,7 +31,6 @@ export const connection =  (socket) => {
                 online: (emailToSocketIds[u.email] || []).length > 0,
             }));
 
-            // also include any connected emails that don't exist in DB (fallback)
             for (const [sid, s] of io.of("/").sockets) {
                 const email = s.email;
                 if (!email) continue;
@@ -56,7 +52,7 @@ export const connection =  (socket) => {
             console.error('Error broadcasting users:', err);
         }
     };
-    // Send initial list to everyone (including the newly connected socket)
+
     broadcastUserIds();
 
     // Ensure getMessages replies only to the requesting socket
@@ -68,46 +64,49 @@ export const connection =  (socket) => {
     // pass socket through so handler can ack back to the requesting socket
     socket.on("changeProfilePic", (data) => changeProfilePic(socket, data));
 
-    socket.on("markAsRead", async (data) => {
-        try {
-            const messageModel = new MessageModel(messagingDB);
-            const userModel = new UserModel(messagingDB);
-            const sender = data.fromEmail
-            const receiver = data.toEmail
-            const messageID = data.id;
-            if (!messageID) {
-                console.warn('markAsRead called without message ID');
-                return;
-            }
-            const message = await messageModel.getMessageModel().findOne({ 
-                where: { messageid: messageID },
-                include: userModel.getUserModel(),
-            });
-            if (!message) {
-                console.warn(`markAsRead: message ID ${messageID} not found`);
-                return;
-            }
-            await messageModel.updateReadStatus(messageID, true);
-            console.log(`Message ID ${messageID} marked as read.`);
-            io.emit('messageReadAck', {
-                id: messageID,
-                content: message.getDataValue("content"),
-                fromEmail: sender,
-                toEmail: receiver,
-                timestamp: message.getDataValue("createdAt") ?? new Date().toISOString(),
-                type: 'received',
-                read: false,
-            });
-        } catch (err) {
-            console.error('Error in markAsRead:', err);
-        }
-    });
+    // mark message as read
+    socket.on("markAsRead", markAsRead);
     
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {
         console.log("user disconnected: " + socket.id);
         broadcastUserIds();
     });
+};
+
+export const markAsRead = async (data) => {
+    try {
+        const messageModel = new MessageModel(messagingDB);
+        const userModel = new UserModel(messagingDB);
+        const sender = data.fromEmail
+        const receiver = data.toEmail
+        const messageID = data.id;
+        if (!messageID) {
+            console.warn('markAsRead called without message ID');
+            return;
+        }
+        const message = await messageModel.getMessageModel().findOne({ 
+            where: { messageid: messageID },
+            include: userModel.getUserModel(),
+        });
+        if (!message) {
+            console.warn(`markAsRead: message ID ${messageID} not found`);
+            return;
+        }
+        await messageModel.updateReadStatus(messageID, true);
+        console.log(`Message ID ${messageID} marked as read.`);
+        io.emit('messageReadAck', {
+            id: messageID,
+            content: message.getDataValue("content"),
+            fromEmail: sender,
+            toEmail: receiver,
+            timestamp: message.getDataValue("createdAt") ?? new Date().toISOString(),
+            type: 'received',
+            read: false,
+        });
+    } catch (err) {
+        console.error('Error in markAsRead:', err);
+    }
 };
 
 
