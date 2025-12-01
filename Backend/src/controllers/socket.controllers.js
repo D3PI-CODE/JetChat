@@ -67,8 +67,42 @@ export const connection =  (socket) => {
 
     // pass socket through so handler can ack back to the requesting socket
     socket.on("changeProfilePic", (data) => changeProfilePic(socket, data));
+
+    socket.on("markAsRead", async (data) => {
+        try {
+            const messageModel = new MessageModel(messagingDB);
+            const userModel = new UserModel(messagingDB);
+            const sender = data.fromEmail
+            const receiver = data.toEmail
+            const messageID = data.id;
+            if (!messageID) {
+                console.warn('markAsRead called without message ID');
+                return;
+            }
+            const message = await messageModel.getMessageModel().findOne({ 
+                where: { messageid: messageID },
+                include: userModel.getUserModel(),
+            });
+            if (!message) {
+                console.warn(`markAsRead: message ID ${messageID} not found`);
+                return;
+            }
+            await messageModel.updateReadStatus(messageID, true);
+            console.log(`Message ID ${messageID} marked as read.`);
+            io.emit('messageReadAck', {
+                id: messageID,
+                content: message.getDataValue("content"),
+                fromEmail: sender,
+                toEmail: receiver,
+                timestamp: message.getDataValue("createdAt") ?? new Date().toISOString(),
+                type: 'received',
+                read: false,
+            });
+        } catch (err) {
+            console.error('Error in markAsRead:', err);
+        }
+    });
     
-      
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {
         console.log("user disconnected: " + socket.id);
@@ -86,34 +120,49 @@ export const sendMessage = async (data) => {
     const senderID = await userModel.emailSearch(sender);
     const receiverID = await userModel.emailSearch(receiver);
     console.log("senderID: ", senderID, " receiverID: ", receiverID);
-    await messageModel.createMessage(senderID, receiverID, data.message);
-    console.log("message received: ", data);
-    io.to(data.to).emit("receiveMessage", data);
-    console.log("message sent to: ", data.to);
+    const message = await messageModel.createMessage(senderID, receiverID, data.message);
+    let mappedData = {
+        id: message.getDataValue("messageid"),
+        content: message.getDataValue("content"),
+        fromEmail: sender,
+        toEmail: receiver,
+        timestamp: message.getDataValue("createdAt") ?? new Date().toISOString(),
+        read: false,
+    }
+    console.log("the msg is being sent to", data.to)
+    io.to(data.to).emit("receiveMessage", mappedData);
+    io.to(data.from).emit("sentMessage", mappedData);
+    console.log(mappedData);
 };
 
-export const getMessages = async (socket, senderEmail, receiverEmail) => {
+export const getMessages = async (socket, data) => {
     try {
         const messageModel = new MessageModel(messagingDB);
         const userModel = new UserModel(messagingDB);
-        const senderID = await userModel.emailSearch(senderEmail);
-        const receiverID = await userModel.emailSearch(receiverEmail);
+        const senderID = await userModel.emailSearch(data.fromEmail);
+        const receiverID = await userModel.emailSearch(data.toEmail);
         const SentMessages = await messageModel.getMsgByUserIDs(senderID, receiverID);
         const ReceivedMessages = await messageModel.getMsgByUserIDs(receiverID, senderID);
-        // Map Sequelize instances to plain objects to ensure JSON-safe payload
+        ReceivedMessages.map(msg => {
+            messageModel.updateReadStatus(msg.messageid, true);
+        })
         const payloadSent = (SentMessages || []).map(msg => ({
-            from: senderEmail,
-            to: receiverEmail,
+            id: (typeof msg.getDataValue === 'function') ? msg.getDataValue('messageid') : msg.messageid,
+            from: data.fromEmail,
+            to: data.toEmail,
             content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
             timestamp: (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : msg.createdAt,
             type: 'sent',
+            read: msg.read,
         }));
         const payloadReceived = (ReceivedMessages || []).map(msg => ({
-            from: receiverEmail,
-            to: senderEmail,
+            id: (typeof msg.getDataValue === 'function') ? msg.getDataValue('messageid') : msg.messageid,
+            from: data.toEmail,
+            to: data.fromEmail,
             content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
             timestamp: (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : msg.createdAt,
             type: 'received',
+            read: msg.read,
         }));
         const mergedPayload = [
             ...payloadSent,
@@ -121,6 +170,8 @@ export const getMessages = async (socket, senderEmail, receiverEmail) => {
         ];
         mergedPayload.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         socket.emit("previousMessages", mergedPayload);
+        console.log('Marking messages as read for', data.toEmail, 'to', data.fromEmail, 'on sockets:', data.to.at(-1));
+        io.to(data.to.at(-1)).emit("messageReadAck", { fromEmail: data.toEmail, toEmail: data.fromEmail });
     } catch (err) {
         console.error('Error in getMessages:', err);
         // Inform the requesting socket of the failure

@@ -22,6 +22,10 @@ export const message = (sequelize) => {
                 type: Sequelize.STRING,
                 defaultValue: '',
             },
+            read: {
+                type: Sequelize.BOOLEAN,
+                defaultValue: false,
+            },
         },
         {
             tableName: 'messages',
@@ -62,7 +66,7 @@ class MessageModel {
             senderID,
             receiverID,
             content,
-        });
+        })
     }
     getMsgByUserIDs(senderID, receiverID) {
         return this.Message.findAll({
@@ -73,6 +77,12 @@ class MessageModel {
             order: [['createdAt', 'ASC']],
             include: this.User,        
         });
+    }
+    updateReadStatus(messageID, readStatus) {
+        return this.Message.update(
+            { read: readStatus },
+            { where: { messageid: messageID } }
+        );
     }
     async sync(options = {}) {
         await this.sequelize.sync(options);
