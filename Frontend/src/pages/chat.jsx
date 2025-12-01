@@ -124,16 +124,18 @@ export default function Chat() {
 
         // When the server sends previous messages (merged payload)
         socket.on('previousMessages', (data) => {
-            console.log('Previous messages received:', data);
             if (Array.isArray(data)) {
                 const myEmail = localStorage.getItem('email');
                 const normalized = data.map(m => ({
+                    id: m.id ?? m.messageid ?? null,
                     content: m.content ?? (typeof m === 'string' ? m : ''),
                     fromEmail: m.from ?? m.fromEmail ?? null,
                     toEmail: m.to ?? m.toEmail ?? null,
                     timestamp: m.timestamp ?? m.createdAt ?? null,
                     type: m.type ?? (m.from === myEmail ? 'sent' : 'received'),
+                    read: m.read ?? false,
                 }));
+                console.log("previous msgs recieved: ", normalized)
                 setTextMessage(normalized);
             } else if (data && data.error) {
                 console.error('previousMessages error:', data.error);
@@ -147,46 +149,49 @@ export default function Chat() {
 
         const handleReceive = (data) => {
             // data is expected to be { message, fromEmail, toEmail }
-            if (!data) return;
-            const msgObj = typeof data === 'string' ? { content: data, fromEmail: null, toEmail: null, timestamp: new Date().toISOString(), type: 'received' } : {
-                content: data.message ?? data.content ?? '',
-                fromEmail: data.fromEmail ?? data.from ?? null,
-                toEmail: data.toEmail ?? data.to ?? null,
-                timestamp: data.timestamp ?? null,
-                type: 'received',
+            const msgObjRecieved = {
+                id: data.id,
+                content: data.content,
+                fromEmail: data.fromEmail,
+                toEmail: data.toEmail,
+                timestamp: data.timestamp,
+                type: "received",
+                read: false,
             };
-            // use ref so handler sees the latest activeChat after switching
+            console.log('Received message:', msgObjRecieved);
             const ac = activeChatRef.current;
-            if (ac && (msgObj.toEmail === ac.email || msgObj.fromEmail === ac.email)) {
-                setTextMessage((prev) => [...prev, msgObj]);
-            }
-        };
-        const handleSent = (data) => {
-            // data is expected to be { message, ... }
-            if (!data) return;
-            const msg = typeof data === 'string' ? { content: data, timestamp: new Date().toISOString(), type: 'sent' } : {
-                content: data.message ?? data.content ?? '',
-                fromEmail: data.fromEmail ?? data.from ?? null,
-                toEmail: data.toEmail ?? data.to ?? null,
-                timestamp: data.timestamp ?? null,
-                type: 'sent',
-            };
-            // only append sent messages if they belong to the active chat
-            const ac = activeChatRef.current;
-            if (!ac || (msg.toEmail === ac.email || msg.fromEmail === ac.email)) {
-                setTextMessage((prev) => [...prev, msg]);
+            if (ac && (msgObjRecieved.toEmail === ac.email || msgObjRecieved.fromEmail === ac.email)) {
+                setTextMessage((prev) => [...prev, msgObjRecieved]);
+                socketRef.current.emit('markAsRead', { id: msgObjRecieved.id, fromEmail: msgObjRecieved.fromEmail, toEmail: msgObjRecieved.toEmail });
             }
         };
 
+        const handleSent = (data) => {
+            
+            const msgObjSent = {
+                id: data.id,
+                content: data.content,
+                fromEmail: data.fromEmail,
+                toEmail: data.toEmail,
+                timestamp: data.timestamp,
+                type: "sent",
+                read: false,
+            };
+
+            const ac = activeChatRef.current;
+            if (ac && (msgObjSent.toEmail === ac.email || msgObjSent.fromEmail === ac.email)) {
+                setTextMessage((prev) => [...prev, msgObjSent]);
+            }
+        }
+
     socket.on('receiveMessage', handleReceive);
-    socket.on('sentMessageAck', handleSent);
+    socket.on('sentMessage', handleSent);
     setVisibleUsers(users.filter((u) => !u.self));
     
         socket.on('connect', () => console.log('socket connected', socket.id));
         socket.on('disconnect', (reason) => console.log('socket disconnected', reason)); 
         return () => {
             socket.off('receiveMessage', handleReceive);
-            socket.off('sentMessageAck', handleSent);
             socket.off('previousMessages');
             socket.off('previousMessagesError');
             socket.off('connect');
@@ -204,14 +209,22 @@ export default function Chat() {
         const myEmail = localStorage.getItem('email');
         // clear current lists when switching chats
         setTextMessage([]);
+        console.log(activeChat.socketIds)
         // request full conversation (server will return messages between myEmail and activeChat.username)
-        socket.emit('getMessages', myEmail, activeChat.email);
+        socket.emit('getMessages',{fromEmail: myEmail, toEmail: activeChat.email, to: activeChat.socketIds});
     }, [activeChat]);
 
     useEffect(() => {
         if (textpanel.current) {
           textpanel.current.scrollTop = textpanel.current.scrollHeight;
         }
+        socketRef.current.on('messageReadAck', (data) => {
+            console.log('Message read acknowledgment received:', data);
+            setTextMessage(prev => prev.map(
+                m => m ? { ...m, read: true } : m
+            ))
+            console.log('Updated messages after read ack:', textMessage);
+        });
       }, [textMessage]);
 
 
@@ -241,7 +254,6 @@ export default function Chat() {
             socketRef.current.emit('sendMessage', payload);
         }
         // append locally so sender sees their message immediately (use email for matching)
-        setTextMessage(prev => [...prev, { content: text, fromEmail: myEmail, toEmail: activeChat.email, timestamp: payload.timestamp, type: 'sent' }]);
         setMessage('');
     };
 

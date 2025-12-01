@@ -39,7 +39,7 @@ const messageModel = new MessageModel(messagingDB);
 // ensure DB schema updates (adds avatarUrl if missing)
 await userModel.sync({ alter: true });
 await userAuthModel.sync();
-await messageModel.sync();
+await messageModel.sync({alter: true});
 
 
 server.listen(PORT, () => {
