@@ -220,6 +220,11 @@ export default function Chat() {
         }
         socketRef.current.on('messageReadAck', (data) => {
             console.log('Message read acknowledgment received:', data);
+            console.log(data.fromEmail, data.toEmail, activeChatRef.current.email);
+            if (data.fromEmail !== activeChatRef.current.email && data.toEmail !== activeChatRef.current.email) {
+                console.log('Ack does not pertain to active chat, ignoring.');
+                return;
+            }
             setTextMessage(prev => prev.map(
                 m => m ? { ...m, read: true } : m
             ))
