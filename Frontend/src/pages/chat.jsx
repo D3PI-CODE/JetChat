@@ -1,14 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
 import './chat.css';
-import { useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 import Textbubble from './Textbubble';
 
 
 export default function Chat() {
     // Theme: use #111818 as the primary panel/background color across the chat UI
-    const navigate = useNavigate();
-    const [sender, setSender] = useState(null);
     const [message, setMessage] = useState('');
     // state for previous messages are split into sent/received
     const [textMessage, setTextMessage] = useState([]);
@@ -20,11 +17,6 @@ export default function Chat() {
     const activeChatRef = useRef(activeChat);
     const [profileImage, setProfileImage] = useState(null);
     const fileInputRef = useRef(null);
-    const [activeUser, setActiveUser] = useState(null);
-
-    const changeMessage = (e) => {
-        setMessage(e.target.value);
-    }
 
     const LogOut = () => {
         localStorage.removeItem('token');
@@ -199,6 +191,7 @@ export default function Chat() {
             socket.off('users', usrMangement);
             socket.off('profilePicUpdated', handleProfilePicUpdated);
         };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // When activeChat changes, request previous messages from the server
@@ -297,7 +290,7 @@ export default function Chat() {
                                 <div className="text-gray-400 dark:text-gray-500 flex items-center justify-center pl-3">
                                     <span className="material-symbols-outlined">search</span>
                                 </div>
-                                <input className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-gray-900 dark:text-white focus:outline-0 focus:ring-0 border-none bg-transparent h-full placeholder:text-gray-400 dark:placeholder:text-gray-500 px-2 text-sm font-normal leading-normal" placeholder="Search or start new chat" onChange={(e) => setSender(e.target.value)}/>
+                                <input className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-gray-900 dark:text-white focus:outline-0 focus:ring-0 border-none bg-transparent h-full placeholder:text-gray-400 dark:placeholder:text-gray-500 px-2 text-sm font-normal leading-normal" placeholder="Search or start new chat"/>
                             </div>
                         </label>
                     </div>
@@ -307,9 +300,7 @@ export default function Chat() {
                         <div className="p-4 text-sm text-gray-500">No users found</div>
                     ) : (
                         visibleUsers.map((u) => (
-                            <div key={u.userID} onClick={() => {
-                                setActiveChat(u) 
-                                setActiveUser(u.userID)}} className={`flex cursor-pointer gap-4 px-4 py-3 justify-between ${activeChat?.userID === u.userID ? 'bg-[#137fec]/20 dark:bg-[#137fec]/30 border-r-4 border-[#137fec]' : ''}`}>
+                            <div key={u.userID} onClick={() => setActiveChat(u)} className={`flex cursor-pointer gap-4 px-4 py-3 justify-between ${activeChat?.userID === u.userID ? 'bg-[#137fec]/20 dark:bg-[#137fec]/30 border-r-4 border-[#137fec]' : ''}`}>
                                 <div className="flex items-center gap-4">
                                     <div className="relative shrink-0">
                                         <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-14 h-14" style={{backgroundImage: u.avatarUrl ? `url('${u.avatarUrl}')` : `url('https://placehold.co/14')`}}></div>
