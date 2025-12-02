@@ -1,7 +1,7 @@
 import { io, messagingDB } from '../index.js';
 import { MessageModel } from '../models/message.model.js';
 import { UserModel } from '../models/user.model.js';
-import Cloudinary from '../lib/Cloudinary.js';
+import Cloudinary from '../lib/CloudinaryInit.js';
 
 export const connection =  (socket) => {
     console.log("a user connected: " + socket.id);

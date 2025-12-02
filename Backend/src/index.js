@@ -10,6 +10,7 @@ import {Server} from "socket.io";
 import http from "http";
 import { connection} from './controllers/socket.controllers.js';
 import { MessageModel } from './models/message.model.js';
+import { redisInitialization } from './lib/RedisInit.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -36,10 +37,11 @@ export const messagingDB = await initializeMessagingDB();
 const userAuthModel = new UserAuthModel(credentialsDB);
 const userModel = new UserModel(messagingDB);
 const messageModel = new MessageModel(messagingDB);
-// ensure DB schema updates (adds avatarUrl if missing)
+// ensure DB schema updates (adds fields if missing)
 await userModel.sync({ alter: true });
 await userAuthModel.sync();
 await messageModel.sync({alter: true});
+await redisInitialization();
 
 
 server.listen(PORT, () => {

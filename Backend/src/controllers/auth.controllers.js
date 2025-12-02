@@ -4,6 +4,7 @@ import { credentialsDB, messagingDB } from '../index.js';
 import { UserAuth, UserAuthModel } from '../models/userAuth.model.js';
 import { User, UserModel } from '../models/user.model.js';
 import jwt from 'jsonwebtoken';
+import redisClient from '../lib/RedisInit.js';
 
 export const login = async (req, res) => {
     const { email, password } = req.body;
@@ -24,23 +25,37 @@ export const login = async (req, res) => {
     const userPass = await userAuthModel.getPassword(userId);
     const isPassValid = await bcrypt.compare(password, userPass);
     const JWT_SECRET = process.env.JWT_SECRET;
-    const msgUserId = await userModel.emailSearch(email);
-    if (isPassValid) {
+    redisClient.hGet(`${email}`,async (err, id) => {
+        if (err) {
+            console.error('Redis hGet error:', err);
+        } else if (id != null) {
+            if (isPassValid) {
+                const user = {
+                    id: msgUserId,
+                    email: email,
+                }
+                const token = jwt.sign(user, JWT_SECRET);
+                res.json({
+                    validCredentials: true,
+                    token: token,
+                });
+            } else {
+                res.json({
+                    validCredentials: false,
+                });
+            }
 
-        const user = {
-            id: msgUserId,
-            email: email,
+        } else {
+            const msgUserId = await userModel.emailSearch(email);
+            redisClient.hSet(`${email}`, 'id', `${msgUserId}`, (err) => {
+                if (err) {
+                    console.error('Redis hSet error:', err);
+                } else {
+                    console.log(`Stored login session for user ${email} with id: ${userId}`);
+                }
+            });
         }
-        const token = jwt.sign(user, JWT_SECRET);
-        res.json({
-            validCredentials: true,
-            token: token,
-        });
-    } else {
-        res.json({
-            validCredentials: false,
-        });
-    }
+    })
 
 
 }
