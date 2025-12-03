@@ -56,13 +56,13 @@ export default function Chat() {
         if (!socketRef.current) {
             console.log('Connecting socket for email:', myEmail);
             socketRef.current = io('http://localhost:5002', { autoConnect: false });
-            // Server requires a userID for persistent connections. If `userId`
-            // isn't in localStorage, fall back to the email so the handshake
-            // still contains an identifier. Log a warning to help debugging.
-            if (!myUserID) {
-                console.warn('No `userId` found in localStorage; falling back to email for socket auth.', { myUserID, myEmail });
+            // Attach auth for the socket handshake. Prefer JWT token for server
+            // authentication; fall back to userId/email so older flows still work.
+            const token = localStorage.getItem('token');
+            if (!token) {
+                console.warn('No `token` found in localStorage; socket will use fallback auth (userId/email).');
             }
-            socketRef.current.auth = { userID: resolvedUserID, email: myEmail };
+            socketRef.current.auth = { token, userID: resolvedUserID, email: myEmail };
             console.log('Socket auth before connect:', socketRef.current.auth);
             socketRef.current.connect();
 
@@ -85,7 +85,6 @@ export default function Chat() {
                 email: user.email,
                 avatarUrl: user.avatarUrl || null,
                 userID: user.id ?? user.email,
-                socketIds: user.socketIds || [],
                 online: !!user.online,
                 self: user.id === myUserID,
             }));
@@ -110,7 +109,7 @@ export default function Chat() {
             if (currentActive) {
                 const updated = processed.find(u => (u.email && currentActive.email && u.email === currentActive.email) || (u.userID && currentActive.userID && u.userID === currentActive.userID));
                 if (updated) {
-                    // replace activeChat so socketIds (and other fields) stay current
+                    // replace activeChat so fields stay current
                     setActiveChat(updated);
                     activeChatRef.current = updated;
                 } else {
@@ -218,7 +217,6 @@ export default function Chat() {
         if (!activeChat || !activeChat.username) return;
         // clear current lists when switching chats
         setTextMessage([]);
-        console.log(activeChat.socketIds)
         // request full conversation (server will return messages between myEmail and activeChat.username)
         socket.emit('getMessages',{from: myUserID, fromEmail: myEmail, to: activeChat.userID, toEmail: activeChat.email});
 
