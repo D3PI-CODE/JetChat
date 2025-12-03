@@ -10,14 +10,7 @@ export const connection =  async (socket) => {
     // Try to resolve the canonical DB id for this connection. The middleware
     // may have set socket.userID to an email as a fallback; prefer DB id.
     try {
-        const userModelTemp = new UserModel(messagingDB);
-        let canonicalId = socket.userID;
-        if (!canonicalId || (typeof canonicalId === 'string' && canonicalId.includes('@'))) {
-            if (socket.email) {
-                const resolved = await userModelTemp.emailSearch(socket.email);
-                if (resolved) canonicalId = resolved;
-            }
-        }
+        const canonicalId = socket.userID;
         if (canonicalId) {
             socket.userID = canonicalId; // use DB id for room name
             socket.join(String(canonicalId));
@@ -35,20 +28,21 @@ export const connection =  async (socket) => {
             const allUsers = await userModel.getUserModel().findAll({ raw: true });
 
             // Build a set of connected user identifiers (DB ids or emails)
-            const connectedUserIds = new Set();
+            redisClient.del("user:online");
             for (const s of Array.from(io.of("/").sockets.values())) {
-                if (s.userID) connectedUserIds.add(String(s.userID));
-                else if (s.email) connectedUserIds.add(s.email);
+                if (s.userID) redisClient.SADD("user:online", String(s.userID));
+                else if (s.email) redisClient.SADD("user:online", s.email);
             }
+            
 
-            const userArr = (allUsers || []).map(u => ({
+            const userArr = await Promise.all((allUsers || []).map(async u => ({
                 id: u.id,
                 email: u.email,
                 username: u.username ?? u.email,
                 avatarUrl: u.avatarUrl || null,
                 // online if any connected socket has this DB id or email
-                online: connectedUserIds.has(String(u.id)) || connectedUserIds.has(u.email),
-            }));
+                online: await redisClient.SISMEMBER("user:online", String(u.id)) === 1 ? true : false,
+            })));
 
             console.log("Broadcasting users (with online status):", userArr);
             io.emit("users", userArr);
