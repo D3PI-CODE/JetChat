@@ -46,7 +46,8 @@ export default function Login() {
                     console.log("Login successful, redirecting to /chat");
                     const token = response.data.token;
                     localStorage.setItem('token', token);
-                    localStorage.setItem('email', email);
+                    localStorage.setItem('userId', response.data.userId);
+                    localStorage.setItem('email', response.data.email);
                     navigate('/chat');
                     
                 } else {

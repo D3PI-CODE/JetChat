@@ -2,24 +2,43 @@ import { io, messagingDB } from '../index.js';
 import { MessageModel } from '../models/message.model.js';
 import { UserModel } from '../models/user.model.js';
 import Cloudinary from '../lib/CloudinaryInit.js';
+import redisClient, { redisHSetOrGet } from '../lib/RedisInit.js';
 
-export const connection =  (socket) => {
-    console.log("a user connected: " + socket.id);
-    socket.email = socket.handshake.auth.email;
+export const connection =  async (socket) => {
+    console.log("Socket connected, socket id: " + socket.id + " userID: " + socket.userID);
     console.log("User email: " + socket.email);
+    // Try to resolve the canonical DB id for this connection. The middleware
+    // may have set socket.userID to an email as a fallback; prefer DB id.
+    try {
+        const userModelTemp = new UserModel(messagingDB);
+        let canonicalId = socket.userID;
+        if (!canonicalId || (typeof canonicalId === 'string' && canonicalId.includes('@'))) {
+            if (socket.email) {
+                const resolved = await userModelTemp.emailSearch(socket.email);
+                if (resolved) canonicalId = resolved;
+            }
+        }
+        if (canonicalId) {
+            socket.userID = canonicalId; // use DB id for room name
+            socket.join(String(canonicalId));
+        } else {
+            console.warn('Could not resolve canonical user id for socket; not joining user room.', { socketId: socket.id, providedUserID: socket.userID, email: socket.email });
+        }
+    } catch (err) {
+        console.error('Error resolving canonical user id for socket:', err);
+    }
+
     const broadcastUserIds = async () => {
         try {
             const userModel = new UserModel(messagingDB);
             // fetch all users from DB
             const allUsers = await userModel.getUserModel().findAll({ raw: true });
 
-            // build a map of email -> array of connected socket ids
-            const emailToSocketIds = {};
-            for (let [sid, s] of io.of("/").sockets) {
-                const email = s.email;
-                if (!email) continue;
-                if (!emailToSocketIds[email]) emailToSocketIds[email] = [];
-                emailToSocketIds[email].push(sid);
+            // Build a set of connected user identifiers (DB ids or emails)
+            const connectedUserIds = new Set();
+            for (const s of Array.from(io.of("/").sockets.values())) {
+                if (s.userID) connectedUserIds.add(String(s.userID));
+                else if (s.email) connectedUserIds.add(s.email);
             }
 
             const userArr = (allUsers || []).map(u => ({
@@ -27,24 +46,9 @@ export const connection =  (socket) => {
                 email: u.email,
                 username: u.username ?? u.email,
                 avatarUrl: u.avatarUrl || null,
-                socketIds: emailToSocketIds[u.email] || [],
-                online: (emailToSocketIds[u.email] || []).length > 0,
+                // online if any connected socket has this DB id or email
+                online: connectedUserIds.has(String(u.id)) || connectedUserIds.has(u.email),
             }));
-
-            for (const [sid, s] of io.of("/").sockets) {
-                const email = s.email;
-                if (!email) continue;
-                const exists = userArr.find(x => x.email === email);
-                if (!exists) {
-                    userArr.push({
-                        id: null,
-                        email,
-                        username: email,
-                        socketIds: emailToSocketIds[email] || [sid],
-                        online: true,
-                    });
-                }
-            }
 
             console.log("Broadcasting users (with online status):", userArr);
             io.emit("users", userArr);
@@ -56,9 +60,9 @@ export const connection =  (socket) => {
     broadcastUserIds();
 
     // Ensure getMessages replies only to the requesting socket
-    socket.on("getMessages", (senderEmail, receiverEmail) => getMessages(socket, senderEmail, receiverEmail));
+    socket.on("getMessages", (data) => getMessages(socket, data));
 
-    //sends a message to a specific socket id
+    //sends a message to a specific user (by email or DB id)
     socket.on("sendMessage", sendMessage);
 
     // pass socket through so handler can ack back to the requesting socket
@@ -69,7 +73,7 @@ export const connection =  (socket) => {
     
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {
-        console.log("user disconnected: " + socket.id);
+        console.log("user disconnected: " + socket.id + " (userID: " + socket.userID + ")");
         broadcastUserIds();
     });
 };
@@ -95,20 +99,30 @@ export const markAsRead = async (data) => {
         }
         await messageModel.updateReadStatus(messageID, true);
         console.log(`Message ID ${messageID} marked as read.`);
-        io.emit('messageReadAck', {
-            id: messageID,
-            content: message.getDataValue("content"),
-            fromEmail: sender,
-            toEmail: receiver,
-            timestamp: message.getDataValue("createdAt") ?? new Date().toISOString(),
-            type: 'received',
-            read: false,
-        });
+        // Notify the sender and receiver rooms (prefer DB ids, fall back to email)
+        try {
+            const senderID = await userModel.emailSearch(sender);
+            const receiverID = await userModel.emailSearch(receiver);
+            const payload = {
+                id: messageID,
+                content: message.getDataValue("content"),
+                fromEmail: sender,
+                toEmail: receiver,
+                timestamp: message.getDataValue("createdAt") ?? new Date().toISOString(),
+                type: 'received',
+                read: true,
+            };
+            const senderRoom = senderID ? String(senderID) : String(sender);
+            const receiverRoom = receiverID ? String(receiverID) : String(receiver);
+            io.to(senderRoom).emit('messageReadAck', payload);
+            io.to(receiverRoom).emit('messageReadAck', payload);
+        } catch (emitErr) {
+            console.error('Error emitting messageReadAck to user rooms:', emitErr);
+        }
     } catch (err) {
         console.error('Error in markAsRead:', err);
     }
 };
-
 
 export const sendMessage = async (data) => {
     const messageModel = new MessageModel(messagingDB);
@@ -128,12 +142,14 @@ export const sendMessage = async (data) => {
         timestamp: message.getDataValue("createdAt") ?? new Date().toISOString(),
         read: false,
     }
-    console.log("the msg is being sent to", data.to)
-    if (data.to.length > 0) {
-        io.to(data.to).emit("receiveMessage", mappedData);
-    }
-    console.log("Message sent to specific socket:", mappedData);
-    io.to(data.from).emit("sentMessage", mappedData);
+    console.log("the msg is being sent to", receiverID)
+    // Emit to the receiver's user room (prefer DB id, otherwise use email)
+    const receiverRoom = receiverID ? String(receiverID) : String(receiver);
+    io.to(receiverRoom).emit("receiveMessage", mappedData);
+    console.log("Message emitted to receiver room:", receiverRoom, mappedData);
+    // Emit to the sender's room so sender receives canonical message id
+    const senderRoom = senderID ? String(senderID) : String(sender);
+    io.to(senderRoom).emit("sentMessage", mappedData);
     console.log(mappedData);
 };
 
@@ -172,8 +188,14 @@ export const getMessages = async (socket, data) => {
         ];
         mergedPayload.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         socket.emit("previousMessages", mergedPayload);
-        console.log('Marking messages as read for', data.toEmail, 'to', data.fromEmail, 'on sockets:', data.to.at(-1));
-        io.to(data.to.at(-1)).emit("messageReadAck", { fromEmail: data.toEmail, toEmail: data.fromEmail });
+        // Notify the other user (mark as read) using their DB id room if available
+        console.log('Marking messages as read for', data.toEmail, 'to', data.fromEmail);
+        if (receiverID) {
+            io.to(String(receiverID)).emit("messageReadAck", { fromEmail: data.toEmail, toEmail: data.fromEmail });
+        } else {
+            // fallback to email room
+            io.to(String(data.toEmail)).emit("messageReadAck", { fromEmail: data.toEmail, toEmail: data.fromEmail });
+        }
     } catch (err) {
         console.error('Error in getMessages:', err);
         // Inform the requesting socket of the failure

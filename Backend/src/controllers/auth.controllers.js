@@ -4,7 +4,7 @@ import { credentialsDB, messagingDB } from '../index.js';
 import { UserAuth, UserAuthModel } from '../models/userAuth.model.js';
 import { User, UserModel } from '../models/user.model.js';
 import jwt from 'jsonwebtoken';
-import redisClient from '../lib/RedisInit.js';
+import redisClient, {redisSetOrGet } from '../lib/RedisInit.js';
 
 export const login = async (req, res) => {
     const { email, password } = req.body;
@@ -15,49 +15,35 @@ export const login = async (req, res) => {
     }
     const userAuthModel = new UserAuthModel(credentialsDB);
     const userModel = new UserModel(messagingDB);
-    const userId = await userAuthModel.emailSearch(email);
-    if (!userId) {
+    const credUserId = await userAuthModel.emailSearch(email);
+    if (!credUserId) {
+        return res.json({
+            validCredentials: false,
+        });
+    }
+
+    const msgUserId = await redisSetOrGet(`user:${email}`, async () => {
+        return await userModel.emailSearch(email);
+    });
+    console.log(`User IDs - CredsDB: ${credUserId}, MessagingDB: ${msgUserId}`);
+    
+    const userPass =  await userAuthModel.getPassword(credUserId);
+    const isPassValid = await bcrypt.compare(password, userPass);
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (isPassValid) {
+        const user = { id: msgUserId, email: email };
+        const token = jwt.sign(user, JWT_SECRET);
+        res.json({
+            validCredentials: true,
+            token: token,
+            userId: msgUserId,
+            email: email,
+        });
+    } else {
         res.json({
             validCredentials: false,
         });
     }
-    
-    const userPass = await userAuthModel.getPassword(userId);
-    const isPassValid = await bcrypt.compare(password, userPass);
-    const JWT_SECRET = process.env.JWT_SECRET;
-    redisClient.hGet(`${email}`,async (err, id) => {
-        if (err) {
-            console.error('Redis hGet error:', err);
-        } else if (id != null) {
-            if (isPassValid) {
-                const user = {
-                    id: msgUserId,
-                    email: email,
-                }
-                const token = jwt.sign(user, JWT_SECRET);
-                res.json({
-                    validCredentials: true,
-                    token: token,
-                });
-            } else {
-                res.json({
-                    validCredentials: false,
-                });
-            }
-
-        } else {
-            const msgUserId = await userModel.emailSearch(email);
-            redisClient.hSet(`${email}`, 'id', `${msgUserId}`, (err) => {
-                if (err) {
-                    console.error('Redis hSet error:', err);
-                } else {
-                    console.log(`Stored login session for user ${email} with id: ${userId}`);
-                }
-            });
-        }
-    })
-
-
 }
 
 export const register = async (req, res) => {
@@ -82,6 +68,9 @@ export const register = async (req, res) => {
     if (!userId) {
         userAuthModel.createUser(email, HashedPassword);
         userModel.createUser(email, username);
+        await redisSetOrGet(`user:${email}`, async () => {
+            return await userModel.emailSearch(email);
+        });
     }
 }
 
@@ -95,17 +84,14 @@ export const validateToken = async (req, res) => {
     }
     const userId = await userModel.emailSearch(email);
     if (userId === req.user.id) {
-        res.json(
-        {
+        res.json({
             id: userId,
             email: email,
             valid: true,
         });
     } else {
-        res.json(
-        {
+        res.json({
             valid: false,
         })
-
     }
 }

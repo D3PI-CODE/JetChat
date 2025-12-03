@@ -17,6 +17,12 @@ export default function Chat() {
     const activeChatRef = useRef(activeChat);
     const [profileImage, setProfileImage] = useState(null);
     const fileInputRef = useRef(null);
+    const myEmail = localStorage.getItem('email');
+    const myUserID = localStorage.getItem('userId');
+    console.log(myUserID);
+    // Resolve a usable userID for socket auth. If no explicit userId is present
+    // fall back to the email so the server still receives an identifier.
+    const resolvedUserID = myUserID || myEmail || null;
 
     const LogOut = () => {
         localStorage.removeItem('token');
@@ -36,7 +42,6 @@ export default function Chat() {
         reader.onload = () => {
             // save data URL in state (variable), can be uploaded to server later
             setProfileImage(reader.result);
-            const myEmail = localStorage.getItem('email');
             if (socketRef.current && myEmail) {
                 socketRef.current.emit("changeProfilePic", { imageData: reader.result, email: myEmail });
             }
@@ -50,12 +55,28 @@ export default function Chat() {
 
     useEffect(() => {
         if (!socketRef.current) {
-            const email = localStorage.getItem('email');
-            console.log('Connecting socket for email:', email);
-            socketRef.current = io('http://localhost:5002', {autoConnect: false });
-            socketRef.current.auth = { email };
-            console.log('Socket ref before connect:', socketRef.current.auth);
+            console.log('Connecting socket for email:', myEmail);
+            socketRef.current = io('http://localhost:5002', { autoConnect: false });
+            // Server requires a userID for persistent connections. If `userId`
+            // isn't in localStorage, fall back to the email so the handshake
+            // still contains an identifier. Log a warning to help debugging.
+            if (!myUserID) {
+                console.warn('No `userId` found in localStorage; falling back to email for socket auth.', { myUserID, myEmail });
+            }
+            socketRef.current.auth = { userID: resolvedUserID, email: myEmail };
+            console.log('Socket auth before connect:', socketRef.current.auth);
             socketRef.current.connect();
+
+            // helpful debug handlers
+            socketRef.current.on('connect_error', (err) => {
+                console.error('Socket connect_error:', err);
+            });
+            socketRef.current.on('connect_timeout', (timeout) => {
+                console.warn('Socket connect_timeout:', timeout);
+            });
+            socketRef.current.on('error', (err) => {
+                console.error('Socket error:', err);
+            });
         }
         
         const socket = socketRef.current;
@@ -67,7 +88,7 @@ export default function Chat() {
                 userID: user.id ?? user.email,
                 socketIds: user.socketIds || [],
                 online: !!user.online,
-                self: Array.isArray(user.socketIds) ? user.socketIds.includes(socket.id) : false,
+                self: user.id === myUserID,
             }));
 
             processed.sort((a, b) => {
@@ -81,7 +102,6 @@ export default function Chat() {
 
             setUsers(processed);
             // if current user has an avatar provided by server, use it
-            const myEmail = localStorage.getItem('email');
             const me = processed.find(u => u.email === myEmail);
             if (me && me.avatarUrl) setProfileImage(me.avatarUrl);
             setVisibleUsers(processed.filter((u) => !u.self));
@@ -107,8 +127,7 @@ export default function Chat() {
         const handleProfilePicUpdated = (data) => {
             if (!data || !data.email) return;
             setUsers((prev) => prev.map(u => u.email === data.email ? { ...u, avatarUrl: data.avatarUrl } : u));
-            const myEmailLocal = localStorage.getItem('email');
-            if (data.email === myEmailLocal && data.avatarUrl) {
+            if (data.email === myEmail && data.avatarUrl) {
                 setProfileImage(data.avatarUrl);
             }
         };
@@ -117,7 +136,6 @@ export default function Chat() {
         // When the server sends previous messages (merged payload)
         socket.on('previousMessages', (data) => {
             if (Array.isArray(data)) {
-                const myEmail = localStorage.getItem('email');
                 const normalized = data.map(m => ({
                     id: m.id ?? m.messageid ?? null,
                     content: m.content ?? (typeof m === 'string' ? m : ''),
@@ -199,12 +217,13 @@ export default function Chat() {
         const socket = socketRef.current;
         if (!socket) return;
         if (!activeChat || !activeChat.username) return;
-        const myEmail = localStorage.getItem('email');
         // clear current lists when switching chats
         setTextMessage([]);
         console.log(activeChat.socketIds)
         // request full conversation (server will return messages between myEmail and activeChat.username)
         socket.emit('getMessages',{fromEmail: myEmail, toEmail: activeChat.email, to: activeChat.socketIds});
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeChat]);
 
     useEffect(() => {
@@ -233,7 +252,6 @@ export default function Chat() {
         }
         const text = message && message.trim();
         if (!text) return;
-        const myEmail = localStorage.getItem('email');
         console.log(activeChat)
         // prefer a single socket id for server io.to(...) usage
         const targetSocketId = Array.isArray(activeChat.socketIds) && activeChat.socketIds.length
@@ -256,7 +274,6 @@ export default function Chat() {
     };
 
     // derive filtered messages for the active chat only
-    const myEmail = localStorage.getItem('email');
     const filteredMessages = activeChat ? textMessage.filter(m => {
         const from = m.fromEmail ?? m.from ?? null;
         const to = m.toEmail ?? m.to ?? null;

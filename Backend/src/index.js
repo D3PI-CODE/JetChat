@@ -11,6 +11,7 @@ import http from "http";
 import { connection} from './controllers/socket.controllers.js';
 import { MessageModel } from './models/message.model.js';
 import { redisInitialization } from './lib/RedisInit.js';
+import { socketAuth } from './middleware/SocketAuth.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -27,6 +28,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 app.use("/api/auth", routes);
 
+io.use(socketAuth);
 io.on("connection", connection);
 
 //initialize databases
