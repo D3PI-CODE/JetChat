@@ -19,7 +19,6 @@ export default function Chat() {
     const fileInputRef = useRef(null);
     const myEmail = localStorage.getItem('email');
     const myUserID = localStorage.getItem('userId');
-    console.log(myUserID);
     // Resolve a usable userID for socket auth. If no explicit userId is present
     // fall back to the email so the server still receives an identifier.
     const resolvedUserID = myUserID || myEmail || null;
@@ -172,7 +171,7 @@ export default function Chat() {
             const ac = activeChatRef.current;
             if (ac && (msgObjRecieved.toEmail === ac.email || msgObjRecieved.fromEmail === ac.email)) {
                 setTextMessage((prev) => [...prev, msgObjRecieved]);
-                socketRef.current.emit('markAsRead', { id: msgObjRecieved.id, fromEmail: msgObjRecieved.fromEmail, toEmail: msgObjRecieved.toEmail });
+                socketRef.current.emit('markAsRead', { id: msgObjRecieved.id, fromEmail: msgObjRecieved.fromEmail, toEmail: msgObjRecieved.toEmail, toUserId: myUserID, fromUserId: ac.userID  });
             }
         };
 
@@ -221,7 +220,7 @@ export default function Chat() {
         setTextMessage([]);
         console.log(activeChat.socketIds)
         // request full conversation (server will return messages between myEmail and activeChat.username)
-        socket.emit('getMessages',{fromEmail: myEmail, toEmail: activeChat.email, to: activeChat.socketIds});
+        socket.emit('getMessages',{from: myUserID, fromEmail: myEmail, to: activeChat.userID, toEmail: activeChat.email});
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeChat]);
@@ -253,14 +252,10 @@ export default function Chat() {
         const text = message && message.trim();
         if (!text) return;
         console.log(activeChat)
-        // prefer a single socket id for server io.to(...) usage
-        const targetSocketId = Array.isArray(activeChat.socketIds) && activeChat.socketIds.length
-            ? activeChat.socketIds[0]
-            : activeChat.socketIds || null;
         const payload = {
             message: text,
-            to: targetSocketId,
-            from: socketRef.current ? socketRef.current.id : null,
+            fromUserId: myUserID,
+            toUserId: activeChat.userID,
             toEmail: activeChat.email,
             fromEmail: myEmail,
             timestamp: new Date().toISOString(),

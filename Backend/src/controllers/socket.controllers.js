@@ -4,6 +4,40 @@ import { UserModel } from '../models/user.model.js';
 import Cloudinary from '../lib/CloudinaryInit.js';
 import redisClient, { redisHSetOrGet } from '../lib/RedisInit.js';
 
+// Broadcast current users and their online status to all connected sockets.
+export const broadcastUserIds = async () => {
+    try {
+        const userModel = new UserModel(messagingDB);
+        const allUsers = await userModel.getUserModel().findAll({ raw: true });
+        try {
+            await redisClient.del("user:online");
+        } catch (e) {
+            console.warn('Redis DEL user:online failed:', e && e.message);
+        }
+        for (const s of Array.from(io.of("/").sockets.values())) {
+            try {
+                if (s.userID) await redisClient.SADD("user:online", String(s.userID));
+                else if (s.email) await redisClient.SADD("user:online", s.email);
+            } catch (e) {
+                console.warn('Redis SADD failed for user presence:', e && e.message);
+            }
+        }
+
+        const userArr = await Promise.all((allUsers || []).map(async u => ({
+            id: u.id,
+            email: u.email,
+            username: u.username ?? u.email,
+            avatarUrl: u.avatarUrl || null,
+            online: await redisClient.SISMEMBER("user:online", String(u.id)) === 1 ? true : false,
+        })));
+
+        console.log("Broadcasting users (with online status):", userArr);
+        io.emit("users", userArr);
+    } catch (err) {
+        console.error('Error broadcasting users:', err);
+    }
+};
+
 export const connection =  async (socket) => {
     console.log("Socket connected, socket id: " + socket.id + " userID: " + socket.userID);
     console.log("User email: " + socket.email);
@@ -21,36 +55,7 @@ export const connection =  async (socket) => {
         console.error('Error resolving canonical user id for socket:', err);
     }
 
-    const broadcastUserIds = async () => {
-        try {
-            const userModel = new UserModel(messagingDB);
-            // fetch all users from DB
-            const allUsers = await userModel.getUserModel().findAll({ raw: true });
-
-            // Build a set of connected user identifiers (DB ids or emails)
-            redisClient.del("user:online");
-            for (const s of Array.from(io.of("/").sockets.values())) {
-                if (s.userID) redisClient.SADD("user:online", String(s.userID));
-                else if (s.email) redisClient.SADD("user:online", s.email);
-            }
-            
-
-            const userArr = await Promise.all((allUsers || []).map(async u => ({
-                id: u.id,
-                email: u.email,
-                username: u.username ?? u.email,
-                avatarUrl: u.avatarUrl || null,
-                // online if any connected socket has this DB id or email
-                online: await redisClient.SISMEMBER("user:online", String(u.id)) === 1 ? true : false,
-            })));
-
-            console.log("Broadcasting users (with online status):", userArr);
-            io.emit("users", userArr);
-        } catch (err) {
-            console.error('Error broadcasting users:', err);
-        }
-    };
-
+    // call module-level broadcaster
     broadcastUserIds();
 
     // Ensure getMessages replies only to the requesting socket
@@ -95,8 +100,8 @@ export const markAsRead = async (data) => {
         console.log(`Message ID ${messageID} marked as read.`);
         // Notify the sender and receiver rooms (prefer DB ids, fall back to email)
         try {
-            const senderID = await userModel.emailSearch(sender);
-            const receiverID = await userModel.emailSearch(receiver);
+            const senderID = data.fromUserId
+            const receiverID = data.toUserId
             const payload = {
                 id: messageID,
                 content: message.getDataValue("content"),
@@ -124,8 +129,9 @@ export const sendMessage = async (data) => {
     const sender = data.fromEmail
     const receiver = data.toEmail
     console.log(sender, receiver)
-    const senderID = await userModel.emailSearch(sender);
-    const receiverID = await userModel.emailSearch(receiver);
+    const senderID = data.fromUserId
+    const receiverID = data.toUserId
+    console.log(senderID, receiverID)
     console.log("senderID: ", senderID, " receiverID: ", receiverID);
     const message = await messageModel.createMessage(senderID, receiverID, data.message);
     let mappedData = {
@@ -151,8 +157,9 @@ export const getMessages = async (socket, data) => {
     try {
         const messageModel = new MessageModel(messagingDB);
         const userModel = new UserModel(messagingDB);
-        const senderID = await userModel.emailSearch(data.fromEmail);
-        const receiverID = await userModel.emailSearch(data.toEmail);
+        const senderID = data.from;
+        const receiverID = data.to;
+        console.log("Fetching messages between", data.from, "and", data.to);
         const SentMessages = await messageModel.getMsgByUserIDs(senderID, receiverID);
         const ReceivedMessages = await messageModel.getMsgByUserIDs(receiverID, senderID);
         ReceivedMessages.map(msg => {
@@ -186,9 +193,6 @@ export const getMessages = async (socket, data) => {
         console.log('Marking messages as read for', data.toEmail, 'to', data.fromEmail);
         if (receiverID) {
             io.to(String(receiverID)).emit("messageReadAck", { fromEmail: data.toEmail, toEmail: data.fromEmail });
-        } else {
-            // fallback to email room
-            io.to(String(data.toEmail)).emit("messageReadAck", { fromEmail: data.toEmail, toEmail: data.fromEmail });
         }
     } catch (err) {
         console.error('Error in getMessages:', err);
@@ -268,24 +272,7 @@ export const changeProfilePic = async (socket, data) => {
             const userModel = new UserModel(messagingDB);
             await userModel.getUserModel().update({ avatarUrl: imageUrl }, { where: { email: data.email } });
 
-            // rebroadcast users so clients get updated avatarUrl
-            const allUsers = await userModel.getUserModel().findAll({ raw: true });
-            const emailToSocketIds = {};
-            for (let [sid, s] of io.of("/").sockets) {
-                const email = s.email;
-                if (!email) continue;
-                if (!emailToSocketIds[email]) emailToSocketIds[email] = [];
-                emailToSocketIds[email].push(sid);
-            }
-            const userArr = (allUsers || []).map(u => ({
-                id: u.id,
-                email: u.email,
-                username: u.username ?? u.email,
-                avatarUrl: u.avatarUrl || null,
-                socketIds: emailToSocketIds[u.email] || [],
-                online: (emailToSocketIds[u.email] || []).length > 0,
-            }));
-            io.emit('users', userArr);
+            broadcastUserIds();
 
             // ack back to the requesting socket with the new URL
             socket.emit('profilePicUpdated', { email: data.email, avatarUrl: imageUrl });
