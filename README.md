@@ -27,7 +27,7 @@ JetChat is a lightweight, beautiful realtime chat application built with React (
 
 ## 🧭 Quick demo
 
-Open two browser windows, sign in with two accounts, and chat in realtime. Switching active conversations automatically requests that conversation's messages and updates realtime message delivery.
+Open two browser windows, sign in with two accounts, and chat in realtime. Switching active conversations automatically requests that conversation's messages and updates realtime message delivery. The client authenticates the socket connection using the same JWT used for HTTP requests, so each socket is associated with a verified user identity.
 
 ---
 
@@ -43,6 +43,65 @@ Files you’ll care about:
 - `Backend/src/controllers/socket.controllers.js` — Socket event handling
 - `Backend/src/routes/messaging.routes.js` — Messaging API endpoints
 
+## 📁 Project Structure
+
+Quick visual overview of the repository layout (useful when exploring code):
+
+```
+Realtime Chat App/
+├─ Backend/
+│  ├─ .env
+│  ├─ dump.rdb
+│  ├─ package.json
+│  └─ src/
+│     ├─ index.js
+│     ├─ controllers/
+│     │  ├─ auth.controllers.js
+│     │  └─ socket.controllers.js
+│     ├─ lib/
+│     │  ├─ CloudinaryInit.js
+│     │  ├─ CredentialsDB.js
+│     │  ├─ MessagingDB.js
+│     │  └─ RedisInit.js
+│     ├─ middleware/
+│     │  ├─ SocketAuth.js
+│     │  └─ tokenAuth.js
+│     ├─ models/
+│     │  ├─ message.model.js
+│     │  ├─ user.model.js
+│     │  └─ userAuth.model.js
+│     └─ routes/
+│        ├─ auth.routes.js
+│        └─ messaging.routes.js
+└─ Frontend/
+	├─ .gitignore
+	├─ eslint.config.js
+	├─ index.html
+	├─ jsconfig.json
+	├─ package.json
+	├─ README.md
+	├─ vite.config.js
+	├─ public/
+	└─ src/
+		├─ App.css
+		├─ App.jsx
+		├─ index.css
+		├─ main.jsx
+		├─ hooks/
+		├─ pages/
+		│  ├─ chat.css
+		│  ├─ chat.jsx
+		│  ├─ login.css
+		│  ├─ login.jsx
+		│  ├─ NotFound.jsx
+		│  ├─ register.css
+		│  ├─ register.jsx
+		│  └─ Textbubble.jsx
+		└─ router/
+			├─ protectedRoute.jsx
+			└─ router.jsx
+```
+
 ---
 
 ## ⚙️ Prerequisites
@@ -50,6 +109,7 @@ Files you’ll care about:
 - Node 18+ (or a compatible LTS)
 - npm or yarn
 - PostgreSQL (recommended) — JetChat's DB layer is pluggable; Postgres is tested in this repo
+- Redis (optional but recommended) — used for presence tracking and to improve scalability
 
 ---
 
@@ -60,29 +120,29 @@ Open two terminals (one for backend, one for frontend).
 Backend:
 
 ```bash
-cd "./Backend"
+cd ./Backend
 npm install
-# create a .env with the variables listed below
+# create a .env with the variables listed below (see ENV section)
 npm run dev
 ```
 
 Frontend:
 
 ```bash
-cd "./Frontend"
+cd ./Frontend
 npm install
 npm run dev
 ```
 
-Then open the frontend URL printed by Vite (usually http://localhost:5173) in two windows to test realtime messaging.
+Then open the frontend URL printed by Vite (usually `http://localhost:5173`) in two windows to test realtime messaging.
 
 ---
 
 ## 🔐 Environment variables
 
-Place a `.env` file in the `Backend/` folder. This project supports both an explicit Postgres connection (host/port/user/password) or a single `DATABASE_URL`. Include the following variables as a minimum:
+Place a `.env` file in the `Backend/` folder. The backend supports either a full Postgres connection or a single `DATABASE_URL`. The application also uses Redis (optional) and Cloudinary (optional). Minimal recommended variables:
 
-Option A — full Postgres connection (recommended for clarity):
+Option A — full Postgres connection (recommended):
 
 ```env
 # server
@@ -96,11 +156,7 @@ DB_USER=postgres
 DB_PASSWORD=your_db_password
 DB_NAME=jetchat
 
-# names for pluggable DB layers (optional)
-CREDDB_NAME=CredentialsDB
-MSGDB_NAME=MessagingDB
-
-# jwt
+# jwt (required for socket auth)
 JWT_SECRET=your_jwt_secret_here
 ```
 
@@ -112,17 +168,35 @@ DATABASE_URL=postgresql://<db_user>:<db_pass>@localhost:5432/jetchat
 JWT_SECRET=your_jwt_secret_here
 ```
 
+Optional Redis settings (recommended for presence and scaling):
+
+```env
+REDIS_URL=redis://[:password@]localhost:6379
+# or
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_PASSWORD=your_redis_password_if_any
+```
+
+Optional Cloudinary (for profile image uploads):
+
+```env
+CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+```
+
 Notes:
-- If `DATABASE_URL` is present, the backend can parse and use it; otherwise it composes a connection string from `DB_*` vars.
+- `JWT_SECRET` is used to verify socket handshake tokens; the frontend should pass the same JWT in the socket `auth` handshake.
+- If `DATABASE_URL` is present, the backend will prefer it; otherwise it composes a connection string from the `DB_*` values.
 - For production, prefer secure secrets management and avoid committing `.env` to source control.
 
 ---
 
 ## 🧩 Architecture notes
 
-- The frontend connects to the socket server at `http://localhost:5002` and authenticates by sending `auth` data (email) on connect.
-- When you select a conversation, the client emits `getMessages` (myEmail, activeChatEmail) and the server responds with `previousMessages` for that conversation.
-- Outgoing messages are emitted as `sendMessage` payloads; the server relays them by targeting a socket id (`io.to(targetSocketId)`).
+- The frontend connects to the socket server at `http://localhost:5002` and authenticates by sending the `token` (JWT) in the socket `auth` handshake.
+- When you select a conversation, the client emits `getMessages` and the server responds with `previousMessages` for that conversation.
+- Outgoing messages are emitted as `sendMessage` payloads; the server routes messages by the application's canonical user id (DB id) rather than by socket ids. The UI no longer uses or receives socket ids.
+- Presence and online/offline state are computed server-side (the backend uses Redis to store a `user:online` set) and the server broadcasts a `users` event with `id`, `email`, `username`, `avatarUrl`, and `online` flag.
 - The frontend keeps `activeChatRef` (a React ref) in sync with the selected chat to avoid stale closures in socket handlers. Messages are filtered by `fromEmail` / `toEmail` so only the active conversation displays in the UI.
 
 ---
