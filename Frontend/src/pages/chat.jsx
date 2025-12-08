@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import './chat.css';
 import io from 'socket.io-client';
 import Textbubble from './Textbubble';
-import { MdGroupAdd } from "react-icons/md";
+import { MdGroupAdd, MdGroupRemove, MdExitToApp } from "react-icons/md";
 
 
 export default function Chat() {
@@ -419,6 +419,17 @@ export default function Chat() {
         }
     }
 
+    const leaveGroup = () => {
+        if (!activeChat || !activeChat.group) {
+            alert("No active group selected.");
+            return;
+        }
+        const socket = socketRef.current;
+        if (socket) {
+            socket.emit('leaveGroup', { groupID: activeChat.groupID, memberEmail: myEmail, memberID: myUserID });
+        }
+    }
+
     // derive filtered messages for the active chat only
     const filteredMessages = activeChat ? (
         activeChat.group ?
@@ -511,7 +522,11 @@ export default function Chat() {
                             <p className={`text-sm ${activeChat?.online ? 'text-green-500' : 'text-gray-400'}`}>{activeChat ? (activeChat.online ? 'Online' : 'Offline') : ''}</p>
                             {membersList && groupMembersMap[activeChat?.groupID] && (
                                 <div className="absolute w-md top-16 bg-white dark:bg-[#111818] border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg p-4 z-10">
-                                    <h3 className="text-md font-semibold mb-2 text-[#1F2937] dark:text-white">Group Members</h3>
+                                    <h3 className="text-md font-semibold mb-1 text-[#1F2937] dark:text-white">Group Members</h3>
+                                    <div className='flex gap-2 pb-2 mb-4 border-b border-gray-300 dark:border-gray-700'>
+                                        <button onClick={addMember} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm"><MdGroupAdd/></button>
+                                        <button onClick={removeMember} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdGroupRemove /></button>
+                                    </div>
                                         <ul className="max-h-60 overflow-y-auto">
                                         {(groupMembersMap[activeChat?.groupID] || []).map((m) => (
                                             <li key={m.id || m.email} className="text-sm text-[#1F2937] dark:text-white mb-1 flex justify-between items-center">
@@ -540,10 +555,9 @@ export default function Chat() {
                                             <li className="text-sm text-[#1F2937] dark:text-white mb-1">No members</li>
                                         )}
                                     </ul>
-                                    <div className='flex gap-2'>
-                                        <button onClick={addMember} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm">Add Members</button>
-                                        <button onClick={removeMember} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm">Remove Members</button>
+                                    <div className='flex gap-2 justify-end'>
                                         <button onClick={() => setMembersList(false)} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm">Close</button>
+                                        <button onClick={leaveGroup} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdExitToApp /></button>
                                     </div>
                                 </div>
                             )}

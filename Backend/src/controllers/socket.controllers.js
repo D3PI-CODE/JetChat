@@ -178,6 +178,8 @@ export const connection =  async (socket) => {
     socket.on("removeGroupMember", removeFromGroup)
 
     socket.on("changeMemberRole", (data) => changeRole(socket, data));
+
+    socket.on("leaveGroup", (data) => leaveGroup(socket, data));
     
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {
@@ -624,5 +626,28 @@ const changeRole = async (socket, data) => {
         try { socket.emit('changeMemberRoleError', { error: err && err.message || 'changeRole failed' }); } catch (e) {}
     }
 };
+
+const leaveGroup = async (socket, data) => {
+    try {
+        const groupID = data.groupID;
+        const memberID = socket.userID || socket.email;
+
+        console.log(`MemberID: ${memberID} leaving groupID: ${groupID}`);
+        const groupModelInstance = new GroupModel(messagingDB);
+        const groupMemberModel = groupModelInstance.GroupMember;
+
+        await groupMemberModel.destroy({
+            where: { groupID: groupID, memberID: memberID }
+        })
+        // Broadcast updated groups to affected users so their lists update immediately
+        try {
+            await broadcastGroups();
+        } catch (bErr) {
+            console.warn('broadcastGroups failed after leaveGroup:', bErr && bErr.message);
+        }
+    } catch (err) {
+        console.error('Error in leaveGroup:', err);
+    }
+}
 
 
