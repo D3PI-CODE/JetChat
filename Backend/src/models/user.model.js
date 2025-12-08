@@ -1,13 +1,14 @@
 import Sequelize from 'sequelize';
+import { randomUUID } from 'crypto';
 
 export const User = (sequelize) => {
     const UserModel = sequelize.define(
         'User',
         {
             id: {
-                type: Sequelize.UUID,
+                type: Sequelize.STRING,
                 primaryKey: true,
-                defaultValue: Sequelize.UUIDV4,
+                defaultValue: () => `USER-${randomUUID()}`,
             },
             email: {
                 type: Sequelize.STRING,
@@ -47,12 +48,26 @@ class UserModel {
         return this.User;
     }
 
-    createUser(email, username) {
-        return this.User.create({
-            email, 
-            username,
-        });
+    async createUser(email, username, attempts = 0) {
+        try {
+            // Attempt to create. If successful, it returns the user.
+            const user = await this.User.create({
+                email,
+                username,
+            });
+            return user;
+        } catch (error) {
+            // Check if this is a Unique Constraint Error (Collision)
+            if (error.name === 'SequelizeUniqueConstraintError') {
+                if (error.fields.id) {
+                    console.warn(`UUID Collision for USER ID detected. Retrying... (Attempt ${attempts + 1})`);
+                    return this.createUser(email, username);
+                }
+            }
+            throw error;
+        }
     }
+
     emailSearch(email) {
         if (!email) {
             // Avoid passing undefined into Sequelize WHERE

@@ -11,11 +11,11 @@ export const message = (sequelize) => {
                 defaultValue: Sequelize.UUIDV4,
             },
             senderID: {
-                type: Sequelize.UUID,
+                type: Sequelize.STRING,
                 allowNull: false,
             },
             receiverID: {
-                type: Sequelize.UUID,
+                type: Sequelize.STRING,
                 allowNull: false
             },
             content: {

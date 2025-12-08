@@ -29,7 +29,7 @@ export const socketAuth = (socket, next) => {
     if (!providedUserID && !providedEmail) {
         return next(new Error('User ID or email is required for persistent connections'));
     }
-    socket.userID = providedUserID || providedEmail;
+        socket.userID = providedUserID || null;
     socket.email = providedEmail || null;
     next();
 };
