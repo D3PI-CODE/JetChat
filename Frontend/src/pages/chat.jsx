@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import './chat.css';
 import io from 'socket.io-client';
 import Textbubble from './Textbubble';
+import { MdGroupAdd } from "react-icons/md";
 
 
 export default function Chat() {
@@ -10,8 +11,9 @@ export default function Chat() {
     // state for previous messages are split into sent/received
     const [textMessage, setTextMessage] = useState([]);
     const [users, setUsers] = useState([]);
+    const [groups, setGroups] = useState([]);
     const socketRef = useRef(null);
-    const [visibleUsers, setVisibleUsers] = useState(users.filter((u) => !u.self));
+    const [visible, setVisible] = useState(users.filter((u) => !u.self));
     const [activeChat, setActiveChat] = useState(null);
     const textpanel = useRef(null);
     const activeChatRef = useRef(activeChat);
@@ -87,6 +89,7 @@ export default function Chat() {
                 userID: user.id ?? user.email,
                 online: !!user.online,
                 self: user.id === myUserID,
+                group:false,
             }));
 
             processed.sort((a, b) => {
@@ -102,7 +105,7 @@ export default function Chat() {
             // if current user has an avatar provided by server, use it
             const me = processed.find(u => u.email === myEmail);
             if (me && me.avatarUrl) setProfileImage(me.avatarUrl);
-            setVisibleUsers(processed.filter((u) => !u.self));
+            setVisible(processed.filter((u) => !u.self));
             console.log('Connected users:', processed);
 
             const currentActive = activeChatRef.current;
@@ -119,7 +122,38 @@ export default function Chat() {
                 }
             }
         };
+
+        const grpMangement = (groupsList) => {
+            const processed = groupsList.map((group) => ({
+                username: group.groupName,
+                groupID: group.groupid,
+                userID: group.groupid, // use same key as users so list rendering works
+                description: group.description || '',
+                CreatorID: group.CreatorID,
+                group:true,
+            }));
+            console.log('Connected groups:', processed);
+            setGroups(processed);
+            setVisible((prev) => [...prev, ...processed]);
+
+            const currentActive = activeChatRef.current;
+            if (currentActive) {
+                const updated = processed.find(g => (g.groupID && currentActive.groupID && g.groupID === currentActive.groupID));
+                if (updated) {
+                    // replace activeChat so fields stay current
+                    setActiveChat(updated);
+                    activeChatRef.current = updated;
+                } else {
+                    // if the user disappeared (logged out), clear active chat
+                    setActiveChat(null);
+                    activeChatRef.current = null;
+                }
+            }
+
+        };
+
         socket.on("users", usrMangement);
+        socket.on("groups", grpMangement);
 
         // When server confirms a profile picture update, update local state immediately
         const handleProfilePicUpdated = (data) => {
@@ -136,6 +170,7 @@ export default function Chat() {
             if (Array.isArray(data)) {
                 const normalized = data.map(m => ({
                     id: m.id ?? m.messageid ?? null,
+                    groupID: m.groupID || null,
                     content: m.content ?? (typeof m === 'string' ? m : ''),
                     fromEmail: m.from ?? m.fromEmail ?? null,
                     toEmail: m.to ?? m.toEmail ?? null,
@@ -162,15 +197,22 @@ export default function Chat() {
                 content: data.content,
                 fromEmail: data.fromEmail,
                 toEmail: data.toEmail,
+                groupID: data.groupID || null,
                 timestamp: data.timestamp,
                 type: "received",
                 read: false,
             };
             console.log('Received message:', msgObjRecieved);
             const ac = activeChatRef.current;
-            if (ac && (msgObjRecieved.toEmail === ac.email || msgObjRecieved.fromEmail === ac.email)) {
+                if (ac && ac.group) {
+                    // Group message handling: compare groupID
+                    if (data.groupID && ac.groupID && data.groupID === ac.groupID) {
+                        setTextMessage((prev) => [...prev, msgObjRecieved]);
+                        // For group messages we do not auto-emit a markAsRead ack here
+                    }
+                } else if (ac && (msgObjRecieved.toEmail === ac.email || msgObjRecieved.fromEmail === ac.email )) {
                 setTextMessage((prev) => [...prev, msgObjRecieved]);
-                socketRef.current.emit('markAsRead', { id: msgObjRecieved.id, fromEmail: msgObjRecieved.fromEmail, toEmail: msgObjRecieved.toEmail, toUserId: myUserID, fromUserId: ac.userID  });
+                    socketRef.current.emit('markAsRead', { id: msgObjRecieved.id, fromEmail: msgObjRecieved.fromEmail, toEmail: msgObjRecieved.toEmail, toUserId: myUserID, fromUserId: ac.userID  });
             }
         };
 
@@ -194,7 +236,7 @@ export default function Chat() {
 
     socket.on('receiveMessage', handleReceive);
     socket.on('sentMessage', handleSent);
-    setVisibleUsers(users.filter((u) => !u.self));
+    setVisible(users.filter((u) => !u.self));
     
         socket.on('connect', () => console.log('socket connected', socket.id));
         socket.on('disconnect', (reason) => console.log('socket disconnected', reason)); 
@@ -217,8 +259,10 @@ export default function Chat() {
         if (!activeChat || !activeChat.username) return;
         // clear current lists when switching chats
         setTextMessage([]);
-        // request full conversation (server will return messages between myEmail and activeChat.username)
-        socket.emit('getMessages',{from: myUserID, fromEmail: myEmail, to: activeChat.userID, toEmail: activeChat.email});
+        // request full conversation. If activeChat is a group, include groupID
+        const payload = { from: myUserID, fromEmail: myEmail, to: activeChat.userID, toEmail: activeChat.email };
+        if (activeChat.group) payload.groupID = activeChat.groupID;
+        socket.emit('getMessages', payload);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeChat]);
@@ -254,6 +298,7 @@ export default function Chat() {
             message: text,
             fromUserId: myUserID,
             toUserId: activeChat.userID,
+            groupID: activeChat.group ? activeChat.groupID : null,
             toEmail: activeChat.email,
             fromEmail: myEmail,
             timestamp: new Date().toISOString(),
@@ -266,12 +311,27 @@ export default function Chat() {
         setMessage('');
     };
 
+    const createGroup = () => {
+        const groupName = prompt("Enter group name:");
+        if (!groupName) return;
+        const socket = socketRef.current;
+        if (socket) {
+            socket.emit('createGroup', { groupName, createdBy: myUserID, createdByEmail: myEmail });
+        }
+    };
+
     // derive filtered messages for the active chat only
-    const filteredMessages = activeChat ? textMessage.filter(m => {
-        const from = m.fromEmail ?? m.from ?? null;
-        const to = m.toEmail ?? m.to ?? null;
-        return (from === myEmail && to === activeChat.email) || (from === activeChat.email && to === myEmail);
-    }) : [];
+    const filteredMessages = activeChat ? (
+        activeChat.group ?
+            // group chat: filter by groupID
+            textMessage.filter(m => (m.groupID && activeChat.groupID && m.groupID === activeChat.groupID)) :
+            // 1-1 chat: filter by emails
+            textMessage.filter(m => {
+                const from = m.fromEmail ?? m.from ?? null;
+                const to = m.toEmail ?? m.to ?? null;
+                return (from === myEmail && to === activeChat.email) || (from === activeChat.email && to === myEmail);
+            })
+    ) : [];
 
     return (
         <div className="min-h-screen min-w-screen flex bg-[#111818] font-display text-white">
@@ -279,9 +339,12 @@ export default function Chat() {
             <aside className="flex h-screen w-20 flex-col items-center justify-between border-r border-transparent bg-[#0d1212] p-4">
                 <div className="flex flex-col items-center gap-8">
                     <div className="relative">
-                        <div onClick={imageUploader} className="profilePic bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12" style={{backgroundImage: profileImage ? `url('${profileImage}')` : `url('https://placehold.co/12')`}}></div>
+                        <div onClick={imageUploader} className="profilePic flex items-center justify-center bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12" style={{backgroundImage: profileImage ? `url('${profileImage}')` : `url('https://placehold.co/12')`}}></div>
                         <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageChange} />
                     </div>
+                    <button onClick={createGroup} className="flex items-center justify-center rounded-lg p-3 text-gray-300 hover:bg-white/5">
+                            <MdGroupAdd size={24} />
+                    </button>
                 </div>
                 <div className="flex flex-col items-center gap-4">
                     <button onClick={LogOut} className="flex items-center justify-center rounded-lg p-3 text-gray-300 hover:bg-white/5">
@@ -306,10 +369,10 @@ export default function Chat() {
                     </div>
                 </div>
                     <div className="flex-1 overflow-y-auto">
-                    {visibleUsers.length === 0 ? (
+                    {visible.length === 0 ? (
                         <div className="p-4 text-sm text-gray-500">No users found</div>
                     ) : (
-                        visibleUsers.map((u) => (
+                        visible.map((u) => (
                             <div key={u.userID} onClick={() => setActiveChat(u)} className={`flex cursor-pointer gap-4 px-4 py-3 justify-between ${activeChat?.userID === u.userID ? 'bg-[#137fec]/20 dark:bg-[#137fec]/30 border-r-4 border-[#137fec]' : ''}`}>
                                 <div className="flex items-center gap-4">
                                     <div className="relative shrink-0">

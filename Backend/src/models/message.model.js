@@ -1,5 +1,6 @@
 import Sequelize from 'sequelize';
 import { User, UserModel } from './user.model.js';
+import { GroupModel } from './Group.model.js';
 
 export const message = (sequelize) => {
     const messageModel = sequelize.define(
@@ -16,7 +17,7 @@ export const message = (sequelize) => {
             },
             receiverID: {
                 type: Sequelize.STRING,
-                allowNull: false
+                allowNull: true,
             },
             content: {
                 type: Sequelize.STRING,
@@ -26,6 +27,11 @@ export const message = (sequelize) => {
                 type: Sequelize.BOOLEAN,
                 defaultValue: false,
             },
+                groupID: {
+                    // optional foreign key to a group; null for 1-1 messages
+                    type: Sequelize.UUID,
+                    allowNull: true,
+                },
         },
         {
             tableName: 'messages',
@@ -46,12 +52,16 @@ class MessageModel {
         this.Message = message(sequelize);
         this.User = new UserModel(sequelize).getUserModel();
         this.model = sequelize.models;
+        this.Group = new GroupModel(sequelize).getGroupModel();
 
         try {
             this.User.hasMany(this.Message, { foreignKey: 'senderID' });
             this.User.hasMany(this.Message, { foreignKey: 'receiverID'});
             this.Message.belongsTo(this.User, { foreignKey: 'senderID'});
             this.Message.belongsTo(this.User, { foreignKey: 'receiverID'});
+
+            this.Group.hasMany(this.Message, { foreignKey: 'groupID' });
+            this.Message.belongsTo(this.Group, { foreignKey: 'groupID' });
         } catch (err) {
             console.error('Error setting up associations in MessageModel:', err);
         }
@@ -78,6 +88,16 @@ class MessageModel {
             include: this.User,        
         });
     }
+    getMsgByGroupID(groupID) {
+        return this.Message.findAll({
+            where: {
+                groupID: groupID,
+            },
+            order: [['createdAt', 'ASC']],
+            include: [this.Group, this.User],        
+        });
+    }
+
     updateReadStatus(messageID, readStatus) {
         return this.Message.update(
             { read: readStatus },

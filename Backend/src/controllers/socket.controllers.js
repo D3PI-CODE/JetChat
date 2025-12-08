@@ -3,6 +3,8 @@ import { MessageModel } from '../models/message.model.js';
 import { UserModel } from '../models/user.model.js';
 import Cloudinary from '../lib/CloudinaryInit.js';
 import redisClient, { redisHSetOrGet } from '../lib/RedisInit.js';
+import { GroupMemberModel } from '../models/groupMember.model.js';
+import { GroupModel } from '../models/Group.model.js';
 
 // Broadcast current users and their online status to all connected sockets.
 export const broadcastUserIds = async () => {
@@ -38,6 +40,44 @@ export const broadcastUserIds = async () => {
     }
 };
 
+export const broadcastGroups = async () => {
+    try {
+        const groupModelInstance = new GroupModel(messagingDB);
+        const groupModel = groupModelInstance.getGroupModel();
+        
+        const allGroups = await groupModel.findAll({ raw: true });
+        // For each group, fetch members and emit the group info only to its members
+        for (const g of allGroups) {
+            const groupInfo = {
+                groupid: g.groupid,
+                groupName: g.groupName,
+                description: g.description,
+                CreatorID: g.CreatorID,
+            };
+            try {
+                const members = await groupModelInstance.GroupMember.findAll({ where: { groupID: g.groupid } });
+                if (!members || members.length === 0) {
+                    // No members found; fallback to broadcasting to all (rare)
+                    console.warn(`broadcastGroups: no members for group ${g.groupid}, broadcasting to all`);
+                    io.emit("groups", [groupInfo]);
+                    continue;
+                }
+                for (const m of members) {
+                    const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
+                    if (!memberId) continue;
+                    io.to(String(memberId)).emit("groups", [groupInfo]);
+                }
+                console.log(`Emitted group ${g.groupid} to ${members.length} members`);
+            } catch (memberErr) {
+                console.error('Error fetching group members for broadcast:', memberErr);
+                io.emit("groups", [groupInfo]);
+            }
+        }
+    } catch (err) {
+        console.error('Error broadcasting groups:', err);
+    }
+};
+
 export const connection =  async (socket) => {
     console.log("Socket connected, socket id: " + socket.id + " userID: " + socket.userID);
     console.log("User email: " + socket.email);
@@ -57,6 +97,7 @@ export const connection =  async (socket) => {
 
     // call module-level broadcaster
     broadcastUserIds();
+    broadcastGroups();
 
     // Ensure getMessages replies only to the requesting socket
     socket.on("getMessages", (data) => getMessages(socket, data));
@@ -69,6 +110,8 @@ export const connection =  async (socket) => {
 
     // mark message as read
     socket.on("markAsRead", markAsRead);
+
+    socket.on("createGroup", createGroup);
     
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {
@@ -131,9 +174,16 @@ export const sendMessage = async (data) => {
     console.log(sender, receiver)
     const senderID = data.fromUserId
     const receiverID = data.toUserId
+    const groupID = data.groupID || null;
     console.log(senderID, receiverID)
     console.log("senderID: ", senderID, " receiverID: ", receiverID);
-    const message = await messageModel.createMessage(senderID, receiverID, data.message);
+    // If this is a group message, store groupID and keep receiverID null
+    let message;
+    if (groupID) {
+        message = await messageModel.getMessageModel().create({ senderID, receiverID: null, content: data.message, groupID });
+    } else {
+        message = await messageModel.createMessage(senderID, receiverID, data.message);
+    }
     let mappedData = {
         id: message.getDataValue("messageid"),
         content: message.getDataValue("content"),
@@ -141,12 +191,32 @@ export const sendMessage = async (data) => {
         toEmail: receiver,
         timestamp: message.getDataValue("createdAt") ?? new Date().toISOString(),
         read: false,
+        groupID: groupID || null,
     }
     console.log("the msg is being sent to", receiverID)
     // Emit to the receiver's user room (prefer DB id, otherwise use email)
-    const receiverRoom = receiverID ? String(receiverID) : String(receiver);
-    io.to(receiverRoom).emit("receiveMessage", mappedData);
-    console.log("Message emitted to receiver room:", receiverRoom, mappedData);
+    if (groupID) {
+        // Emit group message only to group members
+        try {
+            const groupModelInstance = new GroupModel(messagingDB);
+            const groupMemberModel = groupModelInstance.GroupMember;
+            const members = await groupMemberModel.findAll({ where: { groupID } });
+            for (const m of members) {
+                const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
+                if (!memberId) continue;
+                const room = String(memberId);
+                io.to(room).emit('receiveMessage', mappedData);
+            }
+            console.log("Message emitted to group members:", groupID, mappedData);
+        } catch (groupErr) {
+            console.error('Failed to emit group message to members, falling back to broadcast:', groupErr);
+            io.emit('receiveMessage', mappedData);
+        }
+    } else {
+        const receiverRoom = receiverID ? String(receiverID) : String(receiver);
+        io.to(receiverRoom).emit("receiveMessage", mappedData);
+        console.log("Message emitted to receiver room:", receiverRoom, mappedData);
+    }
     // Emit to the sender's room so sender receives canonical message id
     const senderRoom = senderID ? String(senderID) : String(sender);
     io.to(senderRoom).emit("sentMessage", mappedData);
@@ -156,33 +226,81 @@ export const sendMessage = async (data) => {
 export const getMessages = async (socket, data) => {
     try {
         const messageModel = new MessageModel(messagingDB);
-        const userModel = new UserModel(messagingDB);
         const senderID = data.from;
         const receiverID = data.to;
+        const groupID = data.groupID || data.toGroupId || null;
         console.log("Fetching messages between", data.from, "and", data.to);
-        const SentMessages = await messageModel.getMsgByUserIDs(senderID, receiverID);
-        const ReceivedMessages = await messageModel.getMsgByUserIDs(receiverID, senderID);
-        ReceivedMessages.map(msg => {
-            messageModel.updateReadStatus(msg.messageid, true);
-        })
-        const payloadSent = (SentMessages || []).map(msg => ({
-            id: (typeof msg.getDataValue === 'function') ? msg.getDataValue('messageid') : msg.messageid,
-            from: data.fromEmail,
-            to: data.toEmail,
-            content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
-            timestamp: (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : msg.createdAt,
-            type: 'sent',
-            read: msg.read,
-        }));
-        const payloadReceived = (ReceivedMessages || []).map(msg => ({
-            id: (typeof msg.getDataValue === 'function') ? msg.getDataValue('messageid') : msg.messageid,
-            from: data.toEmail,
-            to: data.fromEmail,
-            content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
-            timestamp: (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : msg.createdAt,
-            type: 'received',
-            read: msg.read,
-        }));
+        let SentMessages = [];
+        let ReceivedMessages = [];
+        if (groupID) {
+            // fetch messages for the group and map to a canonical payload shape
+            const Messages = await messageModel.getMsgByGroupID(groupID);
+            const groupPayload = Messages.map(msg => {
+                const id = (typeof msg.getDataValue === 'function') ? msg.getDataValue('messageid') : msg.messageid || msg.id;
+                const createdAt = (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : msg.createdAt || msg.timestamp;
+                const senderOfMsg = (typeof msg.getDataValue === 'function') ? msg.getDataValue('senderID') : msg.senderID;
+                const type = senderOfMsg === senderID ? 'sent' : 'received';
+                return {
+                    id,
+                    from: type === 'sent' ? data.fromEmail : data.toEmail,
+                    to: type === 'sent' ? data.toEmail : data.fromEmail,
+                    content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
+                    timestamp: createdAt,
+                    type,
+                    read: !!msg.read,
+                    groupID: (typeof msg.getDataValue === 'function') ? msg.getDataValue('groupID') : msg.groupID,
+                };
+            });
+
+            // sort by timestamp to ensure chronological order
+            groupPayload.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            // split for backwards compatibility with downstream logic
+            SentMessages = groupPayload.filter(m => m.type === 'sent');
+            ReceivedMessages = groupPayload.filter(m => m.type === 'received');
+
+            console.log('Marking group messages as read for', data.fromEmail, 'in group', groupID);
+        } else {
+            SentMessages = await messageModel.getMsgByUserIDs(senderID, receiverID);
+            ReceivedMessages = await messageModel.getMsgByUserIDs(receiverID, senderID);
+        }
+        // Safely mark received messages as read. Messages may be plain objects (with `id`) or Sequelize instances (with `messageid` or getDataValue).
+        ReceivedMessages.forEach(msg => {
+            const mid = msg && (msg.messageid || msg.id || (typeof msg.getDataValue === 'function' ? msg.getDataValue('messageid') : undefined));
+            if (mid) {
+                messageModel.updateReadStatus(mid, true).catch(err => console.warn('Failed to update read status for', mid, err && err.message));
+            } else {
+                console.warn('Skipping updateReadStatus: could not resolve message id for', msg);
+            }
+        });
+        const payloadSent = (SentMessages || []).map(msg => {
+            const id = (typeof msg.getDataValue === 'function') ? msg.getDataValue('messageid') : (msg.id || msg.messageid);
+            const timestamp = (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : (msg.timestamp || msg.createdAt);
+            return {
+                id,
+                from: data.fromEmail,
+                to: data.toEmail,
+                content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
+                timestamp,
+                type: 'sent',
+                read: !!msg.read,
+                groupID: (typeof msg.getDataValue === 'function') ? msg.getDataValue('groupID') : msg.groupID,
+            };
+        });
+        const payloadReceived = (ReceivedMessages || []).map(msg => {
+            const id = (typeof msg.getDataValue === 'function') ? msg.getDataValue('messageid') : (msg.id || msg.messageid);
+            const timestamp = (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : (msg.timestamp || msg.createdAt);
+            return {
+                id,
+                from: data.toEmail,
+                to: data.fromEmail,
+                content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
+                timestamp,
+                type: 'received',
+                read: !!msg.read,
+                groupID: (typeof msg.getDataValue === 'function') ? msg.getDataValue('groupID') : msg.groupID,
+            };
+        });
         const mergedPayload = [
             ...payloadSent,
             ...payloadReceived
@@ -286,6 +404,31 @@ export const changeProfilePic = async (socket, data) => {
     }
 }
 
+const createGroup = async (data) => {
+    try {
+        const groupName = data.groupName;
+        const createdBy = data.createdBy;
+
+        console.log(`Creating group: ${groupName} by userID: ${createdBy}`);
+        const groupModelInstance = new GroupModel(messagingDB);
+        const groupModel = groupModelInstance.getGroupModel();
+        const groupMemberModel = groupModelInstance.GroupMember;
+
+        const newGroup = await groupModelInstance.createGroup(groupName, '', createdBy);
+            io.emit("newGroupCreated", { groupName, createdBy, groupID: newGroup.groupid });
+            console.log(`Group created successfully: ${groupName} (ID: ${newGroup.groupid})`);
+
+            // Broadcast updated group list to all connected clients
+            try {
+                await broadcastGroups();
+            } catch (broadcastErr) {
+                console.warn('Failed to broadcast groups after creation:', broadcastErr && broadcastErr.message);
+            }
+
+    } catch (err) {
+        console.error('Error in createGroup:', err);
+    }
+};
 
 
 

@@ -56,6 +56,30 @@ class GroupModel {
         return this.Group;
     }
 
+    async createGroup(groupName, description, CreatorID) {
+        const transaction = await this.sequelize.transaction();
+        try {
+            const group = await this.Group.create({
+                groupName,
+                description,
+                CreatorID
+            }, { transaction });
+            
+            // Add the creator as a member of the group
+            await this.GroupMember.create({
+                groupID: group.getDataValue('groupid'),
+                memberID: CreatorID,
+                role: 'admin'
+            }, { transaction });
+            
+            await transaction.commit();
+            return group;
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
+    }
+
     async sync(options = {}) {
         await this.sequelize.sync(options);
     }
