@@ -12,6 +12,8 @@ import { connection} from './controllers/socket.controllers.js';
 import { MessageModel } from './models/message.model.js';
 import { redisInitialization } from './lib/RedisInit.js';
 import { socketAuth } from './middleware/SocketAuth.js';
+import { GroupModel } from './models/Group.model.js';
+import { GroupMemberModel } from './models/groupMember.model.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -39,10 +41,15 @@ export const messagingDB = await initializeMessagingDB();
 const userAuthModel = new UserAuthModel(credentialsDB);
 const userModel = new UserModel(messagingDB);
 const messageModel = new MessageModel(messagingDB);
+const groupModel = new GroupModel(messagingDB);
+const groupMemberModel = new GroupMemberModel(messagingDB);
 // ensure DB schema updates (adds fields if missing)
 await userModel.sync({ alter: true });
 await userAuthModel.sync();
 await messageModel.sync({alter: true});
+await groupModel.sync({alter: true});
+await groupMemberModel.sync({alter: true});
+// Initialize Redis
 await redisInitialization();
 
 
