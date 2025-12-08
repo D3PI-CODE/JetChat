@@ -5,6 +5,7 @@ import Cloudinary from '../lib/CloudinaryInit.js';
 import redisClient, { redisHSetOrGet } from '../lib/RedisInit.js';
 import { GroupMemberModel } from '../models/groupMember.model.js';
 import { GroupModel } from '../models/Group.model.js';
+import { where } from 'sequelize';
 
 // Broadcast current users and their online status to all connected sockets.
 export const broadcastUserIds = async () => {
@@ -44,35 +45,94 @@ export const broadcastGroups = async () => {
     try {
         const groupModelInstance = new GroupModel(messagingDB);
         const groupModel = groupModelInstance.getGroupModel();
-        
+        // Build per-member group lists and emit only to those members.
         const allGroups = await groupModel.findAll({ raw: true });
-        // For each group, fetch members and emit the group info only to its members
+        const allMembers = await groupModelInstance.GroupMember.findAll({ raw: true });
+
+        // Fetch users up-front so we can enrich member objects and map id<->email
+        const userModel = new UserModel(messagingDB);
+        const allUsersFull = await userModel.getUserModel().findAll({ raw: true });
+
+        // Map groupid -> group info (we'll add members below)
+        const groupsById = new Map();
         for (const g of allGroups) {
-            const groupInfo = {
+            groupsById.set(String(g.groupid), {
                 groupid: g.groupid,
                 groupName: g.groupName,
                 description: g.description,
                 CreatorID: g.CreatorID,
+                members: [],
+            });
+        }
+
+        // Aggregate groups per member identifier (memberID can be DB id or email depending on how stored)
+        // Build users map to enrich members with name/email (keyed by both id and email)
+        const usersById = new Map();
+        for (const u of allUsersFull || []) {
+            if (u.id) usersById.set(String(u.id), u);
+            if (u.email) usersById.set(String(u.email), u);
+        }
+
+        // Populate each group's members array and build per-member group lists
+        const memberGroupsMap = new Map();
+        for (const gm of allMembers) {
+            const memberId = gm && (gm.memberID || (typeof gm.getDataValue === 'function' ? gm.getDataValue('memberID') : undefined));
+            const gid = gm && (gm.groupID || (typeof gm.getDataValue === 'function' ? gm.getDataValue('groupID') : undefined));
+            if (!memberId || !gid) continue;
+            const key = String(gid);
+            const ginfo = groupsById.get(String(gid));
+            if (!ginfo) continue;
+
+            // find user info
+            const user = usersById.get(String(memberId)) || usersById.get(String(memberId)) || null;
+            const memberObj = {
+                id: memberId,
+                name: (user && (user.username || user.name)) || null,
+                email: (user && user.email) || null,
+                role: gm.role || null,
             };
+
+            // add to group's members array (avoid duplicates)
+            if (!ginfo.members.some(m => String(m.id) === String(memberId))) {
+                ginfo.members.push(memberObj);
+            }
+
+            // add group to member's personal groups list
+            const memberKey = String(memberId);
+            if (!memberGroupsMap.has(memberKey)) memberGroupsMap.set(memberKey, []);
+            memberGroupsMap.get(memberKey).push(ginfo);
+        }
+
+        // Build id<->email lookup maps so we can emit to alternate rooms if needed
+        const idToEmail = new Map();
+        const emailToId = new Map();
+        for (const u of allUsersFull || []) {
+            if (u.id) idToEmail.set(String(u.id), u.email);
+            if (u.email) emailToId.set(String(u.email), u.id);
+        }
+
+        // Emit to each member's room(s)
+        for (const [memberKey, groupsArr] of memberGroupsMap.entries()) {
             try {
-                const members = await groupModelInstance.GroupMember.findAll({ where: { groupID: g.groupid } });
-                if (!members || members.length === 0) {
-                    // No members found; fallback to broadcasting to all (rare)
-                    console.warn(`broadcastGroups: no members for group ${g.groupid}, broadcasting to all`);
-                    io.emit("groups", [groupInfo]);
-                    continue;
+                // Emit to the room matching the stored member identifier
+                io.to(String(memberKey)).emit('groups', groupsArr);
+
+                // If the memberKey is a DB id and we know the email, also emit to email room
+                const mappedEmail = idToEmail.get(String(memberKey));
+                if (mappedEmail) {
+                    io.to(String(mappedEmail)).emit('groups', groupsArr);
                 }
-                for (const m of members) {
-                    const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
-                    if (!memberId) continue;
-                    io.to(String(memberId)).emit("groups", [groupInfo]);
+
+                // If the memberKey is an email and we know the id, also emit to id room
+                const mappedId = emailToId.get(String(memberKey));
+                if (mappedId) {
+                    io.to(String(mappedId)).emit('groups', groupsArr);
                 }
-                console.log(`Emitted group ${g.groupid} to ${members.length} members`);
-            } catch (memberErr) {
-                console.error('Error fetching group members for broadcast:', memberErr);
-                io.emit("groups", [groupInfo]);
+            } catch (emitErr) {
+                console.error('Error emitting groups to member', memberKey, emitErr && emitErr.message);
             }
         }
+        console.log(`broadcastGroups: emitted groups to ${memberGroupsMap.size} member identifiers`);
     } catch (err) {
         console.error('Error broadcasting groups:', err);
     }
@@ -114,6 +174,10 @@ export const connection =  async (socket) => {
     socket.on("createGroup", createGroup);
 
     socket.on("addGroupMember", addtoGroup);
+
+    socket.on("removeGroupMember", removeFromGroup)
+
+    socket.on("changeMemberRole", changeRole);
     
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {
@@ -449,11 +513,66 @@ const addtoGroup = async (data) => {
 
         console.log(`Member added successfully: memberID ${memberID} to groupID ${groupID}`);
 
+        // Broadcast updated groups to affected users so their lists update immediately
+        try {
+            await broadcastGroups();
+        } catch (bErr) {
+            console.warn('broadcastGroups failed after addtoGroup:', bErr && bErr.message);
+        }
+
     } catch (err) {
         console.error('Error in addtoGroup:', err);
     }
 };
 
+const removeFromGroup = async (data) => {
+    try {
+        const groupID = data.groupID;
+        const memberID = data.memberID;
 
+        console.log(`removing memberID: ${memberID} from groupID: ${groupID}`);
+        const groupModelInstance = new GroupModel(messagingDB);
+        const groupMemberModel = groupModelInstance.GroupMember;
+
+        await groupMemberModel.destroy({
+            where: { groupID: groupID, memberID: memberID }
+        })
+        // Broadcast updated groups to affected users so their lists update immediately
+        try {
+            await broadcastGroups();
+        } catch (bErr) {
+            console.warn('broadcastGroups failed after removeFromGroup:', bErr && bErr.message);
+        }
+    } catch (err) {
+        console.error('Error in removeFromGroup:', err);
+    }
+};
+
+const changeRole = async (data) => {
+    try {
+        const groupID = data.groupID;
+        const memberID = data.memberID;
+        const newRole = data.newRole;
+        
+        console.log(`Changing role for memberID: ${memberID} in groupID: ${groupID} to role: ${newRole}`);
+        const groupModelInstance = new GroupModel(messagingDB);
+        const groupMemberModel = groupModelInstance.GroupMember;
+        await groupMemberModel.update(
+            { role: newRole },
+            { where: { groupID: groupID, memberID: memberID } }
+        );
+        console.log(`Role changed successfully for memberID: ${memberID} in groupID: ${groupID} to role: ${newRole}`);
+
+        // Broadcast updated groups to affected users so their lists update immediately
+        try {
+            await broadcastGroups();
+        } catch (bErr) {
+            console.warn('broadcastGroups failed after changeRole:', bErr && bErr.message);
+        }
+
+    } catch (err) {
+        console.error('Error in changeRole:', err);
+    }
+};
 
 

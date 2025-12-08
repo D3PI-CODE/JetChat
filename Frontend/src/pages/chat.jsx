@@ -12,6 +12,7 @@ export default function Chat() {
     const [textMessage, setTextMessage] = useState([]);
     const [users, setUsers] = useState([]);
     const [groups, setGroups] = useState([]);
+    const [groupMembersMap, setGroupMembersMap] = useState({});
     const socketRef = useRef(null);
     const [visible, setVisible] = useState(users.filter((u) => !u.self));
     const [activeChat, setActiveChat] = useState(null);
@@ -106,7 +107,13 @@ export default function Chat() {
             // if current user has an avatar provided by server, use it
             const me = processed.find(u => u.email === myEmail);
             if (me && me.avatarUrl) setProfileImage(me.avatarUrl);
-            setVisible(processed.filter((u) => !u.self));
+            // Preserve any existing group entries in the visible list so users updates
+            // don't remove groups (keeps behavior consistent and avoids flashing)
+            setVisible(prev => {
+                const nonGroupUsers = processed.filter((u) => !u.self);
+                const existingGroups = (prev || []).filter(item => item && item.group);
+                return [...nonGroupUsers, ...existingGroups];
+            });
             console.log('Connected users:', processed);
 
             const currentActive = activeChatRef.current;
@@ -135,7 +142,24 @@ export default function Chat() {
             }));
             console.log('Connected groups:', processed);
             setGroups(processed);
-            setVisible((prev) => [...prev, ...processed]);
+            // Replace any existing group entries in `visible` with the latest processed list
+            setVisible((prev) => {
+                const nonGroupItems = (prev || []).filter(item => !item.group);
+                return [...nonGroupItems, ...processed];
+            });
+
+            // Store members for each group (if provided in payload)
+            if (Array.isArray(groupsList)) {
+                setGroupMembersMap(prev => {
+                    const next = { ...(prev || {}) };
+                    for (const g of groupsList) {
+                        if (g && g.groupid) {
+                            next[g.groupid] = (g.members || []).map(m => ({ id: m.id, name: m.name || m.username || m.email, email: m.email, role: m.role }));
+                        }
+                    }
+                    return next;
+                });
+            }
 
             const currentActive = activeChatRef.current;
             if (currentActive) {
@@ -237,17 +261,18 @@ export default function Chat() {
 
     socket.on('receiveMessage', handleReceive);
     socket.on('sentMessage', handleSent);
-    setVisible(users.filter((u) => !u.self));
     
         socket.on('connect', () => console.log('socket connected', socket.id));
         socket.on('disconnect', (reason) => console.log('socket disconnected', reason)); 
         return () => {
             socket.off('receiveMessage', handleReceive);
+            socket.off('sentMessage', handleSent);
             socket.off('previousMessages');
             socket.off('previousMessagesError');
             socket.off('connect');
             socket.off('disconnect');
             socket.off('users', usrMangement);
+            socket.off('groups', grpMangement);
             socket.off('profilePicUpdated', handleProfilePicUpdated);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -341,7 +366,47 @@ export default function Chat() {
             socket.emit('addGroupMember', { groupID: activeChat.groupID, memberEmail, memberID: memberID });
         }
     };
-    
+
+    const removeMember = () => {
+        const memberEmail = prompt("Enter the email of the user to remove from the group:");
+        let memberID = ""
+        users.forEach(u => {
+            if (memberEmail === u.email) {
+                console.log(u.userID);
+                memberID = u.userID;
+            } 
+        });
+        console.log("MemberID: ", memberID);
+        if (!memberEmail) return;
+        if (!activeChat || !activeChat.group) {
+            alert("No active group selected.");
+            return;
+        }
+        const socket = socketRef.current;
+        if (socket) {
+            socket.emit('removeGroupMember', { groupID: activeChat.groupID, memberEmail, memberID: memberID });
+        }
+    };
+
+    const changeRole = (m) => {
+        const newRole = prompt("Enter new role for the member (e.g., admin, member):");
+        let memberID = ""
+        users.forEach(u => {
+            if (m.email === u.email) {
+                memberID = u.userID;
+            } 
+        });
+        if (!newRole) return;
+        if (!activeChat || !activeChat.group) {
+            alert("No active group selected.");
+            return;
+        }
+        const socket = socketRef.current;
+        if (socket) {
+            socket.emit('changeMemberRole', { groupID: activeChat.groupID, memberEmail: m.email, memberID: memberID, newRole });
+        }
+    }
+
     // derive filtered messages for the active chat only
     const filteredMessages = activeChat ? (
         activeChat.group ?
@@ -430,14 +495,22 @@ export default function Chat() {
                                 <div className="absolute w-md top-16 bg-white dark:bg-[#111818] border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg p-4 z-10">
                                     <h3 className="text-md font-semibold mb-2 text-[#1F2937] dark:text-white">Group Members</h3>
                                     <ul className="max-h-60 overflow-y-auto">
-                                        {/* Placeholder members list */}
-                                        <li className="text-sm text-[#1F2937] dark:text-white mb-1">Member 1</li>
-                                        <li className="text-sm text-[#1F2937] dark:text-white mb-1">Member 2</li>
-                                        <li className="text-sm text-[#1F2937] dark:text-white mb-1">Member 3</li>
-                                        <li className="text-sm text-[#1F2937] dark:text-white mb-1">Member 4</li>
+                                        {(groupMembersMap[activeChat?.groupID] || []).map((m) => (
+                                            <li key={m.id || m.email} className="text-sm text-[#1F2937] dark:text-white mb-1 flex justify-between items-center">
+                                                <div>
+                                                    <div className="font-medium">{m.name || m.email}</div>
+                                                    <div className="text-xs text-gray-500">{m.email}</div>
+                                                </div>
+                                                <div onClick={() => changeRole(m)} className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">{m.role || 'member'}</div>
+                                            </li>
+                                        ))}
+                                        {(!groupMembersMap[activeChat?.groupID] || groupMembersMap[activeChat?.groupID].length === 0) && (
+                                            <li className="text-sm text-[#1F2937] dark:text-white mb-1">No members</li>
+                                        )}
                                     </ul>
                                     <div className='flex gap-2'>
                                         <button onClick={addMember} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm">Add Members</button>
+                                        <button onClick={removeMember} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm">Remove Members</button>
                                         <button onClick={() => setMembersList(false)} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm">Close</button>
                                     </div>
                                 </div>
