@@ -17,6 +17,7 @@ export default function Chat() {
     const [activeChat, setActiveChat] = useState(null);
     const textpanel = useRef(null);
     const activeChatRef = useRef(activeChat);
+    const [membersList, setMembersList] = useState(false);
     const [profileImage, setProfileImage] = useState(null);
     const fileInputRef = useRef(null);
     const myEmail = localStorage.getItem('email');
@@ -320,6 +321,27 @@ export default function Chat() {
         }
     };
 
+    const addMember = () => {
+        const memberEmail = prompt("Enter the email of the user to add to the group:");
+        let memberID = ""
+        users.forEach(u => { 
+            if (memberEmail === u.email) {
+                console.log(u.userID);
+                memberID = u.userID;
+            } 
+        });
+        console.log("MemberID: ", memberID);
+        if (!memberEmail) return;
+        if (!activeChat || !activeChat.group) {
+            alert("No active group selected.");
+            return;
+        }
+        const socket = socketRef.current;
+        if (socket) {
+            socket.emit('addGroupMember', { groupID: activeChat.groupID, memberEmail, memberID: memberID });
+        }
+    };
+    
     // derive filtered messages for the active chat only
     const filteredMessages = activeChat ? (
         activeChat.group ?
@@ -399,11 +421,27 @@ export default function Chat() {
                 <header className="flex shrink-0 items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111818] px-6 py-4">
                     <div className="flex items-center gap-4">
                         <div className="relative">
-                                <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12" style={{backgroundImage: activeChat?.avatarUrl ? `url('${activeChat.avatarUrl}')` : `url('https://placehold.co/12')`}}></div>
+                                <div onClick = {() => setMembersList(true)} className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12" style={{backgroundImage: activeChat?.avatarUrl ? `url('${activeChat.avatarUrl}')` : `url('https://placehold.co/12')`}}></div>
                         </div>
-                        <div>
+                        <div className="relative flex flex-col">
                             <h2 className="text-lg font-semibold text-[#1F2937] dark:text-white">{activeChat?.username ?? 'Select a chat'}</h2>
                             <p className={`text-sm ${activeChat?.online ? 'text-green-500' : 'text-gray-400'}`}>{activeChat ? (activeChat.online ? 'Online' : 'Offline') : ''}</p>
+                            {membersList && (
+                                <div className="absolute w-md top-16 bg-white dark:bg-[#111818] border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg p-4 z-10">
+                                    <h3 className="text-md font-semibold mb-2 text-[#1F2937] dark:text-white">Group Members</h3>
+                                    <ul className="max-h-60 overflow-y-auto">
+                                        {/* Placeholder members list */}
+                                        <li className="text-sm text-[#1F2937] dark:text-white mb-1">Member 1</li>
+                                        <li className="text-sm text-[#1F2937] dark:text-white mb-1">Member 2</li>
+                                        <li className="text-sm text-[#1F2937] dark:text-white mb-1">Member 3</li>
+                                        <li className="text-sm text-[#1F2937] dark:text-white mb-1">Member 4</li>
+                                    </ul>
+                                    <div className='flex gap-2'>
+                                        <button onClick={addMember} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm">Add Members</button>
+                                        <button onClick={() => setMembersList(false)} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm">Close</button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </header>

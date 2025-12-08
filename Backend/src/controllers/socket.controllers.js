@@ -112,6 +112,8 @@ export const connection =  async (socket) => {
     socket.on("markAsRead", markAsRead);
 
     socket.on("createGroup", createGroup);
+
+    socket.on("addGroupMember", addtoGroup);
     
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {
@@ -430,6 +432,27 @@ const createGroup = async (data) => {
     }
 };
 
+const addtoGroup = async (data) => {
+    try {
+        const groupID = data.groupID;
+        const memberID = data.memberID;
+
+        console.log(`Adding memberID: ${memberID} to groupID: ${groupID}`);
+        const groupModelInstance = new GroupModel(messagingDB);
+        const groupMemberModel = groupModelInstance.GroupMember;
+
+        await groupMemberModel.create({
+            groupID: groupID,
+            memberID: memberID,
+            role: 'member'
+        });
+
+        console.log(`Member added successfully: memberID ${memberID} to groupID ${groupID}`);
+
+    } catch (err) {
+        console.error('Error in addtoGroup:', err);
+    }
+};
 
 
 
