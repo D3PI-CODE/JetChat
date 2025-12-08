@@ -69,9 +69,9 @@ class GroupModel {
             await this.GroupMember.create({
                 groupID: group.getDataValue('groupid'),
                 memberID: CreatorID,
-                role: 'admin'
+                role: 'owner'
             }, { transaction });
-            
+
             await transaction.commit();
             return group;
         } catch (error) {

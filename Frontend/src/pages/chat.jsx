@@ -190,6 +190,17 @@ export default function Chat() {
         };
         socket.on('profilePicUpdated', handleProfilePicUpdated);
 
+        const handleChangeRoleError = (err) => {
+            console.error('changeMemberRole error:', err);
+            if (err && err.error) alert(`Role change failed: ${err.error}`);
+            else alert('Role change failed');
+        };
+        const handleChangeRoleSuccess = (data) => {
+            console.log('changeMemberRole success:', data);
+        };
+        socket.on('changeMemberRoleError', handleChangeRoleError);
+        socket.on('changeMemberRoleSuccess', handleChangeRoleSuccess);
+
         // When the server sends previous messages (merged payload)
         socket.on('previousMessages', (data) => {
             if (Array.isArray(data)) {
@@ -274,6 +285,8 @@ export default function Chat() {
             socket.off('users', usrMangement);
             socket.off('groups', grpMangement);
             socket.off('profilePicUpdated', handleProfilePicUpdated);
+            socket.off('changeMemberRoleError', handleChangeRoleError);
+            socket.off('changeMemberRoleSuccess', handleChangeRoleSuccess);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -388,22 +401,21 @@ export default function Chat() {
         }
     };
 
-    const changeRole = (m) => {
-        const newRole = prompt("Enter new role for the member (e.g., admin, member):");
-        let memberID = ""
-        users.forEach(u => {
-            if (m.email === u.email) {
-                memberID = u.userID;
-            } 
-        });
-        if (!newRole) return;
+    // Handle role changes from the dropdown. Frontend enforces only admins/owners
+    // can change other members' roles; the backend will perform authoritative checks.
+    const handleRoleChange = (member, role) => {
+        if (!role) return;
         if (!activeChat || !activeChat.group) {
             alert("No active group selected.");
             return;
         }
+        let memberID = "";
+        users.forEach(u => {
+            if (member.email === u.email) memberID = u.userID;
+        });
         const socket = socketRef.current;
         if (socket) {
-            socket.emit('changeMemberRole', { groupID: activeChat.groupID, memberEmail: m.email, memberID: memberID, newRole });
+            socket.emit('changeMemberRole', { groupID: activeChat.groupID, memberEmail: member.email, memberID: memberID, newRole: role });
         }
     }
 
@@ -419,6 +431,12 @@ export default function Chat() {
                 return (from === myEmail && to === activeChat.email) || (from === activeChat.email && to === myEmail);
             })
     ) : [];
+
+    // Determine current user's role in the active group (if any)
+    const myRole = (activeChat && activeChat.group && groupMembersMap[activeChat.groupID])
+        ? (groupMembersMap[activeChat.groupID].find(m => (m.id && String(m.id) === String(myUserID)) || (m.email && m.email === myEmail)) || {}).role
+        : null;
+    const canChangeRoles = myRole === 'admin' || myRole === 'owner';
 
     return (
         <div className="min-h-screen min-w-screen flex bg-[#111818] font-display text-white">
@@ -491,17 +509,31 @@ export default function Chat() {
                         <div className="relative flex flex-col">
                             <h2 className="text-lg font-semibold text-[#1F2937] dark:text-white">{activeChat?.username ?? 'Select a chat'}</h2>
                             <p className={`text-sm ${activeChat?.online ? 'text-green-500' : 'text-gray-400'}`}>{activeChat ? (activeChat.online ? 'Online' : 'Offline') : ''}</p>
-                            {membersList && (
+                            {membersList && groupMembersMap[activeChat?.groupID] && (
                                 <div className="absolute w-md top-16 bg-white dark:bg-[#111818] border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg p-4 z-10">
                                     <h3 className="text-md font-semibold mb-2 text-[#1F2937] dark:text-white">Group Members</h3>
-                                    <ul className="max-h-60 overflow-y-auto">
+                                        <ul className="max-h-60 overflow-y-auto">
                                         {(groupMembersMap[activeChat?.groupID] || []).map((m) => (
                                             <li key={m.id || m.email} className="text-sm text-[#1F2937] dark:text-white mb-1 flex justify-between items-center">
                                                 <div>
                                                     <div className="font-medium">{m.name || m.email}</div>
                                                     <div className="text-xs text-gray-500">{m.email}</div>
                                                 </div>
-                                                <div onClick={() => changeRole(m)} className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">{m.role || 'member'}</div>
+                                                <div>
+                                                    {m.role === 'owner' ? (
+                                                        <div className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">owner</div>
+                                                    ) : (
+                                                        <select
+                                                            value={(m.role || 'member')}
+                                                            disabled={!canChangeRoles || ((m.id && String(m.id) === String(myUserID)) || (m.email === myEmail))}
+                                                            onChange={(e) => handleRoleChange(m, e.target.value)}
+                                                            className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700"
+                                                        >
+                                                            <option value="admin">admin</option>
+                                                            <option value="member">member</option>
+                                                        </select>
+                                                    )}
+                                                </div>
                                             </li>
                                         ))}
                                         {(!groupMembersMap[activeChat?.groupID] || groupMembersMap[activeChat?.groupID].length === 0) && (

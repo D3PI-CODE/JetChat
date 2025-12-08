@@ -177,7 +177,7 @@ export const connection =  async (socket) => {
 
     socket.on("removeGroupMember", removeFromGroup)
 
-    socket.on("changeMemberRole", changeRole);
+    socket.on("changeMemberRole", (data) => changeRole(socket, data));
     
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {
@@ -548,20 +548,69 @@ const removeFromGroup = async (data) => {
     }
 };
 
-const changeRole = async (data) => {
+const changeRole = async (socket, data) => {
     try {
-        const groupID = data.groupID;
-        const memberID = data.memberID;
-        const newRole = data.newRole;
-        
-        console.log(`Changing role for memberID: ${memberID} in groupID: ${groupID} to role: ${newRole}`);
+        const groupID = data && data.groupID;
+        const memberID = data && data.memberID;
+        const newRole = data && data.newRole;
+
+        if (!groupID || !memberID || !newRole) {
+            socket.emit('changeMemberRoleError', { error: 'Missing parameters' });
+            return;
+        }
+
         const groupModelInstance = new GroupModel(messagingDB);
         const groupMemberModel = groupModelInstance.GroupMember;
+
+        // Resolve the requester identity (prefer DB id, fall back to email)
+        const requesterId = socket.userID || socket.email;
+        if (!requesterId) {
+            socket.emit('changeMemberRoleError', { error: 'Unauthenticated' });
+            return;
+        }
+
+        // Ensure requester is a group member with admin/owner privileges
+        const requester = await groupMemberModel.findOne({ where: { groupID, memberID: requesterId } });
+        if (!requester) {
+            socket.emit('changeMemberRoleError', { error: 'You are not a member of this group' });
+            return;
+        }
+        if (!(requester.role === 'admin' || requester.role === 'owner')) {
+            socket.emit('changeMemberRoleError', { error: 'Insufficient permissions' });
+            return;
+        }
+
+        // Do not allow changing your own role via this action
+        if (String(requesterId) === String(memberID)) {
+            socket.emit('changeMemberRoleError', { error: 'Cannot change your own role' });
+            return;
+        }
+
+        // Fetch target member record
+        const target = await groupMemberModel.findOne({ where: { groupID, memberID } });
+        if (!target) {
+            socket.emit('changeMemberRoleError', { error: 'Target user is not a member of this group' });
+            return;
+        }
+
+        // Do not allow changing the owner role or assigning owner
+        if (target.role === 'owner') {
+            socket.emit('changeMemberRoleError', { error: 'Cannot change owner role' });
+            return;
+        }
+        if (newRole === 'owner') {
+            socket.emit('changeMemberRoleError', { error: 'Cannot assign owner role' });
+            return;
+        }
+
+        console.log(`Changing role for memberID: ${memberID} in groupID: ${groupID} to role: ${newRole} (requested by ${requesterId})`);
+
         await groupMemberModel.update(
             { role: newRole },
             { where: { groupID: groupID, memberID: memberID } }
         );
-        console.log(`Role changed successfully for memberID: ${memberID} in groupID: ${groupID} to role: ${newRole}`);
+
+        socket.emit('changeMemberRoleSuccess', { groupID, memberID, newRole });
 
         // Broadcast updated groups to affected users so their lists update immediately
         try {
@@ -572,6 +621,7 @@ const changeRole = async (data) => {
 
     } catch (err) {
         console.error('Error in changeRole:', err);
+        try { socket.emit('changeMemberRoleError', { error: err && err.message || 'changeRole failed' }); } catch (e) {}
     }
 };
 
