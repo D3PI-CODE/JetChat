@@ -23,24 +23,39 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                 // avatars are shown in the conversation list only.
                 let messageAvatar = (m && m.fromAvatar) || activeChat?.avatarUrl || null;
                 const isGroup = !!(activeChat && activeChat.group);
+                let senderDisplayName = null;
+                let senderIdKey = null;
                 if (isGroup) {
                     const senderEmail = m.fromEmail || m.from || null;
                     const senderId = m.fromUserId || m.fromId || m.from || null;
+                    // senderIdKey is used for grouping consecutive messages. Include
+                    // username keys in case senderID/email are not available.
+                    senderIdKey = senderId || senderEmail || m.fromUsername || m.username || null;
                     // try to find user by email or id
                     let user = null;
                     if (senderEmail) user = users.find(u => u.email === senderEmail) || null;
-                    if (!user && senderId) user = users.find(u => String(u.userID) === String(senderId) || String(u.userID) === String(senderId)) || null;
+                    if (!user && senderId) user = users.find(u => String(u.userID) === String(senderId)) || null;
                     if (user && user.avatarUrl) messageAvatar = messageAvatar || user.avatarUrl;
                     // fallback: try to find in groupMembersMap for name/email (they may not have avatarUrl)
                     if (!messageAvatar && activeChat?.groupID && groupMembersMap && groupMembersMap[activeChat.groupID]) {
                         const member = groupMembersMap[activeChat.groupID].find(x => (x.email && x.email === senderEmail) || (x.id && String(x.id) === String(senderId)));
                         if (member && member.avatarUrl) messageAvatar = messageAvatar || member.avatarUrl;
                     }
+                    // determine a display name for group messages. Prefer explicit
+                    // username fields sent by the server (`fromUsername` / `username`),
+                    // then fallback to `fromName`, and then to user/group member lookups.
+                    senderDisplayName = m.fromUsername || m.username || m.fromName || (user && (user.username || user.email)) || null;
+                    if (!senderDisplayName && activeChat?.groupID && groupMembersMap && groupMembersMap[activeChat.groupID]) {
+                        const member = groupMembersMap[activeChat.groupID].find(x => (x.email && x.email === senderEmail) || (x.id && String(x.id) === String(senderId)));
+                        if (member) senderDisplayName = member.name || member.email || null;
+                    }
+                    if (!senderDisplayName) senderDisplayName = m.fromUsername || m.username || senderEmail || senderId || 'Unknown';
                 }
 
                 // Render sent messages on the right; for group chats we do NOT show avatar in the bubble
                 if (type === 'sent') {
                     if (isGroup) {
+                        // For sent group messages we do not show the sender name.
                         return (
                             <div key={idx} className="flex items-end gap-3 justify-end">
                                 <div className="flex flex-col gap-1 items-end">
@@ -68,9 +83,19 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                 } else {
                     // received
                     if (isGroup) {
+                        // Only show sender name for received messages and when the previous
+                        // message was from a different sender (grouping).
+                        const prev = messages && messages[idx - 1];
+                        let prevSenderKey = null;
+                        if (prev) {
+                            // include username fields when resolving previous sender identity
+                            prevSenderKey = prev.fromUserId || prev.fromId || prev.from || prev.fromEmail || prev.fromUsername || prev.username || null;
+                        }
+                        const showName = type !== 'sent' && (!prevSenderKey || String(prevSenderKey) !== String(senderIdKey));
                         return (
                             <div key={idx} className="flex items-start gap-3 max-w-xl">
                                 <div className="flex flex-col gap-1">
+                                    {showName ? <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">{senderDisplayName}</div> : null}
                                     <div className="rounded-xl rounded-bl-none bg-white dark:bg-gray-700 p-3 shadow-sm">
                                         <p className="text-sm text-gray-800 dark:text-gray-200">{content}</p>
                                     </div>

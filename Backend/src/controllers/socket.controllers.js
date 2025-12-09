@@ -291,10 +291,14 @@ export const sendMessage = async (data) => {
                 mappedData.fromUserId = senderProfile.id || senderID || null;
                 mappedData.fromAvatar = senderProfile.avatarUrl || null;
                 mappedData.fromName = senderProfile.username || senderProfile.email || null;
+                mappedData.fromUsername = senderProfile.username || null;
+                mappedData.username = senderProfile.username || senderProfile.email || null;
             } else {
                 mappedData.fromUserId = senderID || null;
                 mappedData.fromAvatar = null;
                 mappedData.fromName = sender || null;
+                mappedData.fromUsername = null;
+                mappedData.username = sender || null;
             }
 
             for (const m of members) {
@@ -326,10 +330,14 @@ export const sendMessage = async (data) => {
                 mappedData.fromUserId = senderProfile.id || senderID || null;
                 mappedData.fromAvatar = senderProfile.avatarUrl || null;
                 mappedData.fromName = senderProfile.username || senderProfile.email || null;
+                mappedData.fromUsername = senderProfile.username || null;
+                mappedData.username = senderProfile.username || senderProfile.email || null;
             } else {
                 mappedData.fromUserId = senderID || null;
                 mappedData.fromAvatar = null;
                 mappedData.fromName = sender || null;
+                mappedData.fromUsername = null;
+                mappedData.username = sender || null;
             }
         } catch (profErr) {
             console.warn('Could not load sender profile for 1-1 message:', profErr && profErr.message);
@@ -457,6 +465,8 @@ export const getMessages = async (socket, data) => {
                         m.fromUserId = u.id || m.fromUserId || null;
                         m.fromAvatar = u.avatarUrl || m.fromAvatar || null;
                         m.fromName = u.username || u.email || m.fromName || null;
+                        m.fromUsername = u.username || null;
+                        m.username = u.username || u.email || m.username || null;
                     }
                 } catch (e) {
                     // ignore per-message enrichment errors
@@ -482,9 +492,11 @@ export const getMessages = async (socket, data) => {
                             u = await userModel.getUserModel().findOne({ where: { email: m.from }, raw: true });
                         }
                         if (u) {
-                            m.fromUserId = u.id || m.fromUserId || null;
-                            m.fromAvatar = u.avatarUrl || m.fromAvatar || null;
-                            m.fromName = u.username || u.email || m.fromName || null;
+                               m.fromUserId = u.id || m.fromUserId || null;
+                               m.fromAvatar = u.avatarUrl || m.fromAvatar || null;
+                               m.fromName = u.username || u.email || m.fromName || null;
+                               m.fromUsername = u.username || null;
+                               m.username = u.username || u.email || m.username || null;
                         }
                     } catch (innerErr) {
                         console.warn('Per-message enrichment failed for', m && (m.id || m.senderID || m.from), innerErr && innerErr.message);

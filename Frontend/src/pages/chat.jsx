@@ -274,6 +274,10 @@ export default function Chat() {
                     timestamp: m.timestamp ?? m.createdAt ?? null,
                     type: m.type ?? (m.from === myEmail ? 'sent' : 'received'),
                     read: m.read ?? false,
+                    fromUserId: m.fromUserId ?? m.senderID ?? null,
+                    fromUsername: m.fromUsername ?? m.username ?? null,
+                    fromName: m.fromName ?? null,
+                    fromAvatar: m.fromAvatar ?? null,
                 }));
                 console.log("previous msgs recieved: ", normalized)
                 setTextMessage(normalized);
@@ -298,6 +302,10 @@ export default function Chat() {
                 timestamp: data.timestamp,
                 type: "received",
                 read: false,
+                fromUserId: data.fromUserId ?? data.fromId ?? data.senderID ?? null,
+                fromUsername: data.fromUsername ?? data.username ?? null,
+                fromName: data.fromName ?? null,
+                fromAvatar: data.fromAvatar ?? null,
             };
             console.log('Received message:', msgObjRecieved);
             const ac = activeChatRef.current;
@@ -324,6 +332,10 @@ export default function Chat() {
                 groupID: data.groupID || null,
                 type: "sent",
                 read: false,
+                fromUserId: data.fromUserId ?? data.fromId ?? data.senderID ?? null,
+                fromUsername: data.fromUsername ?? data.username ?? null,
+                fromName: data.fromName ?? null,
+                fromAvatar: data.fromAvatar ?? null,
             };
 
             const ac = activeChatRef.current;
