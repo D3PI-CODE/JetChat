@@ -568,7 +568,14 @@ export const changeProfilePic = async (socket, data) => {
             result = await Cloudinary.uploader.upload(payload, {
                 folder: 'avatars',
                 resource_type: 'image',
+                width: 500,
+                height: 500,
+                crop: 'fill',
+                fetch_format: 'auto',
+                quality: 'auto',
+                gravity: 'face',
             });
+        
         } finally {
             clearInterval(spinnerInterval);
             const totalElapsed = Date.now() - startTime;

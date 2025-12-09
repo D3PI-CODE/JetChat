@@ -658,7 +658,7 @@ export default function Chat() {
                                 </div>
                                 <div className="shrink-0 flex flex-col items-end gap-1">
                                     <p className="text-gray-500 dark:text-gray-400 text-xs font-normal">{u.lastSeen || ''}</p>
-                                    <div className="flex w-6 h-6 items-center justify-center rounded-full bg-[#137fec] text-white text-xs font-bold">{u.unreadCount || ''}</div>
+                                    {/*<div className="flex w-6 h-6 items-center justify-center rounded-full bg-[#137fec] text-white text-xs font-bold">{u.unreadCount || ''}</div>*/}
                                 </div>
                             </div>
                         ))
