@@ -80,6 +80,12 @@ class GroupModel {
         }
     }
 
+    deleteGroup(groupID) {
+        return this.Group.destroy({
+            where: { groupid: groupID }
+        });
+    }
+
     async sync(options = {}) {
         await this.sequelize.sync(options);
     }

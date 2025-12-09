@@ -4,7 +4,7 @@ import { UserModel } from '../models/user.model.js';
 import Cloudinary from '../lib/CloudinaryInit.js';
 import redisClient, { redisHSetOrGet } from '../lib/RedisInit.js';
 import { GroupMemberModel } from '../models/groupMember.model.js';
-import { GroupModel } from '../models/Group.model.js';
+import { group, GroupModel } from '../models/Group.model.js';
 import { where } from 'sequelize';
 
 // Broadcast current users and their online status to all connected sockets.
@@ -171,15 +171,18 @@ export const connection =  async (socket) => {
     // mark message as read
     socket.on("markAsRead", markAsRead);
 
-    socket.on("createGroup", createGroup);
+    socket.on("createGroup", (data) => createGroup(socket, data));
 
-    socket.on("addGroupMember", addtoGroup);
+    socket.on("addGroupMember", (data) => addtoGroup(socket, data));
 
-    socket.on("removeGroupMember", removeFromGroup)
+    socket.on("removeGroupMember", (data) => removeFromGroup(socket, data));
+
+    socket.on('deleteGroup', (data) => deleteGroup(socket, data));
 
     socket.on("changeMemberRole", (data) => changeRole(socket, data));
 
     socket.on("leaveGroup", (data) => leaveGroup(socket, data));
+    
     
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {
@@ -269,11 +272,37 @@ export const sendMessage = async (data) => {
             const groupModelInstance = new GroupModel(messagingDB);
             const groupMemberModel = groupModelInstance.GroupMember;
             const members = await groupMemberModel.findAll({ where: { groupID } });
+            // Attach sender profile info so recipients can render avatar immediately
+            let senderProfile = null;
+            try {
+                if (senderID) senderProfile = await userModel.getUserModel().findOne({ where: { id: senderID }, raw: true });
+                if (!senderProfile && sender) senderProfile = await userModel.getUserModel().findOne({ where: { email: sender }, raw: true });
+            } catch (profErr) {
+                console.warn('Could not load sender profile for message:', profErr && profErr.message);
+            }
+            if (senderProfile) {
+                mappedData.fromUserId = senderProfile.id || senderID || null;
+                mappedData.fromAvatar = senderProfile.avatarUrl || null;
+                mappedData.fromName = senderProfile.username || senderProfile.email || null;
+            } else {
+                mappedData.fromUserId = senderID || null;
+                mappedData.fromAvatar = null;
+                mappedData.fromName = sender || null;
+            }
+
             for (const m of members) {
                 const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
                 if (!memberId) continue;
+                // don't send the group 'receiveMessage' to the sender — sender will get a 'sentMessage'
+                if (senderID && String(memberId) === String(senderID)) continue;
+                if (sender && String(memberId) === String(sender)) continue;
+
                 const room = String(memberId);
-                io.to(room).emit('receiveMessage', mappedData);
+                try {
+                    io.to(room).emit('receiveMessage', mappedData);
+                } catch (emitErr) {
+                    console.warn('Failed to emit receiveMessage to room', room, emitErr && emitErr.message);
+                }
             }
             console.log("Message emitted to group members:", groupID, mappedData);
         } catch (groupErr) {
@@ -281,6 +310,23 @@ export const sendMessage = async (data) => {
             io.emit('receiveMessage', mappedData);
         }
     } else {
+        // Attach sender profile for 1-1 message so recipient can render avatar
+        try {
+            let senderProfile = null;
+            if (senderID) senderProfile = await userModel.getUserModel().findOne({ where: { id: senderID }, raw: true });
+            if (!senderProfile && sender) senderProfile = await userModel.getUserModel().findOne({ where: { email: sender }, raw: true });
+            if (senderProfile) {
+                mappedData.fromUserId = senderProfile.id || senderID || null;
+                mappedData.fromAvatar = senderProfile.avatarUrl || null;
+                mappedData.fromName = senderProfile.username || senderProfile.email || null;
+            } else {
+                mappedData.fromUserId = senderID || null;
+                mappedData.fromAvatar = null;
+                mappedData.fromName = sender || null;
+            }
+        } catch (profErr) {
+            console.warn('Could not load sender profile for 1-1 message:', profErr && profErr.message);
+        }
         const receiverRoom = receiverID ? String(receiverID) : String(receiver);
         io.to(receiverRoom).emit("receiveMessage", mappedData);
         console.log("Message emitted to receiver room:", receiverRoom, mappedData);
@@ -310,6 +356,7 @@ export const getMessages = async (socket, data) => {
                 const type = senderOfMsg === senderID ? 'sent' : 'received';
                 return {
                     id,
+                    senderID: senderOfMsg,
                     from: type === 'sent' ? data.fromEmail : data.toEmail,
                     to: type === 'sent' ? data.toEmail : data.fromEmail,
                     content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
@@ -346,6 +393,7 @@ export const getMessages = async (socket, data) => {
             const timestamp = (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : (msg.timestamp || msg.createdAt);
             return {
                 id,
+                senderID: (typeof msg.getDataValue === 'function') ? msg.getDataValue('senderID') : (msg.senderID || null),
                 from: data.fromEmail,
                 to: data.toEmail,
                 content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
@@ -360,6 +408,7 @@ export const getMessages = async (socket, data) => {
             const timestamp = (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : (msg.timestamp || msg.createdAt);
             return {
                 id,
+                senderID: (typeof msg.getDataValue === 'function') ? msg.getDataValue('senderID') : (msg.senderID || null),
                 from: data.toEmail,
                 to: data.fromEmail,
                 content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
@@ -374,6 +423,71 @@ export const getMessages = async (socket, data) => {
             ...payloadReceived
         ];
         mergedPayload.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        // Enrich messages with sender profile info (avatar, userId, name) so clients
+        // can display avatars for historical messages immediately.
+        try {
+            const userModel = new UserModel(messagingDB);
+            // collect unique sender ids and emails from merged payload
+            const ids = Array.from(new Set((mergedPayload || []).map(m => m.senderID).filter(Boolean)));
+            const emails = Array.from(new Set((mergedPayload || []).map(m => m.from).filter(Boolean)));
+            const usersById = new Map();
+            const usersByEmail = new Map();
+            if (ids.length > 0) {
+                const usersByIdList = await userModel.getUserModel().findAll({ where: { id: ids }, raw: true });
+                for (const u of usersByIdList || []) if (u && u.id) usersById.set(String(u.id), u);
+            }
+            if (emails.length > 0) {
+                const usersByEmailList = await userModel.getUserModel().findAll({ where: { email: emails }, raw: true });
+                for (const u of usersByEmailList || []) if (u && u.email) usersByEmail.set(String(u.email), u);
+            }
+            for (const m of mergedPayload) {
+                try {
+                    let u = null;
+                    if (m && m.senderID) u = usersById.get(String(m.senderID)) || null;
+                    if (!u && m && m.from) u = usersByEmail.get(String(m.from)) || null;
+                    if (u) {
+                        m.fromUserId = u.id || m.fromUserId || null;
+                        m.fromAvatar = u.avatarUrl || m.fromAvatar || null;
+                        m.fromName = u.username || u.email || m.fromName || null;
+                    }
+                } catch (e) {
+                    // ignore per-message enrichment errors
+                }
+            }
+        } catch (enrichErr) {
+            console.warn('Could not enrich previous messages with user profiles:', enrichErr && enrichErr.message);
+        }
+
+        // Diagnostic & fallback: if any merged message still lacks an avatar, try per-message lookup
+        try {
+            const missing = (mergedPayload || []).filter(m => !m.fromAvatar && (m.senderID || m.from));
+            if (missing.length > 0) {
+                console.log(`getMessages: ${missing.length} messages missing fromAvatar; attempting per-message lookup`);
+                const userModel = new UserModel(messagingDB);
+                for (const m of missing) {
+                    try {
+                        let u = null;
+                        if (m.senderID) {
+                            u = await userModel.getUserModel().findOne({ where: { id: m.senderID }, raw: true });
+                        }
+                        if (!u && m.from) {
+                            u = await userModel.getUserModel().findOne({ where: { email: m.from }, raw: true });
+                        }
+                        if (u) {
+                            m.fromUserId = u.id || m.fromUserId || null;
+                            m.fromAvatar = u.avatarUrl || m.fromAvatar || null;
+                            m.fromName = u.username || u.email || m.fromName || null;
+                        }
+                    } catch (innerErr) {
+                        console.warn('Per-message enrichment failed for', m && (m.id || m.senderID || m.from), innerErr && innerErr.message);
+                    }
+                }
+            }
+        } catch (fbErr) {
+            console.warn('Fallback enrichment failed:', fbErr && fbErr.message);
+        }
+
         socket.emit("previousMessages", mergedPayload);
         // Notify the other user (mark as read) using their DB id room if available
         console.log('Marking messages as read for', data.toEmail, 'to', data.fromEmail);
@@ -472,10 +586,11 @@ export const changeProfilePic = async (socket, data) => {
     }
 }
 
-const createGroup = async (data) => {
+const createGroup = async (socket, data) => {
     try {
-        const groupName = data.groupName;
-        const createdBy = data.createdBy;
+        const groupName = data && data.groupName;
+        // Prefer authenticated socket.userID as creator when available
+        const createdBy = (data && data.createdBy) || socket.userID || socket.email;
 
         console.log(`Creating group: ${groupName} by userID: ${createdBy}`);
         const groupModelInstance = new GroupModel(messagingDB);
@@ -483,70 +598,119 @@ const createGroup = async (data) => {
         const groupMemberModel = groupModelInstance.GroupMember;
 
         const newGroup = await groupModelInstance.createGroup(groupName, '', createdBy);
-            io.emit("newGroupCreated", { groupName, createdBy, groupID: newGroup.groupid });
-            console.log(`Group created successfully: ${groupName} (ID: ${newGroup.groupid})`);
+        io.emit("newGroupCreated", { groupName, createdBy, groupID: newGroup.groupid });
+        console.log(`Group created successfully: ${groupName} (ID: ${newGroup.groupid})`);
 
-            // Broadcast updated group list to all connected clients
-            try {
-                await broadcastGroups();
-            } catch (broadcastErr) {
-                console.warn('Failed to broadcast groups after creation:', broadcastErr && broadcastErr.message);
-            }
+        // Broadcast updated group list to all connected clients
+        try {
+            await broadcastGroups();
+        } catch (broadcastErr) {
+            console.warn('Failed to broadcast groups after creation:', broadcastErr && broadcastErr.message);
+        }
 
     } catch (err) {
         console.error('Error in createGroup:', err);
+        try { socket.emit('createGroupError', { error: err && err.message || 'createGroup failed' }); } catch (e) {}
     }
 };
 
-const addtoGroup = async (data) => {
+const addtoGroup = async (socket, data) => {
     try {
-        const groupID = data.groupID;
-        const memberID = data.memberID;
+        const groupID = data && data.groupID;
+        const memberID = data && data.memberID;
 
-        console.log(`Adding memberID: ${memberID} to groupID: ${groupID}`);
+        if (!groupID || !memberID) {
+            try { socket.emit('addGroupMemberError', { error: 'Missing parameters' }); } catch (e) {}
+            return;
+        }
+
         const groupModelInstance = new GroupModel(messagingDB);
         const groupMemberModel = groupModelInstance.GroupMember;
 
-        await groupMemberModel.create({
-            groupID: groupID,
-            memberID: memberID,
-            role: 'member'
-        });
+        // Requester must be a member (members, admins, owners can add)
+        const requesterId = socket.userID || socket.email;
+        if (!requesterId) {
+            socket.emit('addGroupMemberError', { error: 'Unauthenticated' });
+            return;
+        }
+        const requester = await groupMemberModel.findOne({ where: { groupID, memberID: requesterId } });
+        if (!requester) {
+            socket.emit('addGroupMemberError', { error: 'You must be a group member to add others' });
+            return;
+        }
 
+        // Prevent duplicate membership
+        const existing = await groupMemberModel.findOne({ where: { groupID, memberID } });
+        if (existing) {
+            socket.emit('addGroupMemberError', { error: 'User is already a member' });
+            return;
+        }
+
+        await groupMemberModel.create({ groupID: groupID, memberID: memberID, role: 'member' });
+        socket.emit('addGroupMemberSuccess', { groupID, memberID });
         console.log(`Member added successfully: memberID ${memberID} to groupID ${groupID}`);
 
         // Broadcast updated groups to affected users so their lists update immediately
-        try {
-            await broadcastGroups();
-        } catch (bErr) {
-            console.warn('broadcastGroups failed after addtoGroup:', bErr && bErr.message);
-        }
+        try { await broadcastGroups(); } catch (bErr) { console.warn('broadcastGroups failed after addtoGroup:', bErr && bErr.message); }
 
     } catch (err) {
         console.error('Error in addtoGroup:', err);
+        try { socket.emit('addGroupMemberError', { error: err && err.message || 'addtoGroup failed' }); } catch (e) {}
     }
 };
 
-const removeFromGroup = async (data) => {
+const removeFromGroup = async (socket, data) => {
     try {
-        const groupID = data.groupID;
-        const memberID = data.memberID;
+        const groupID = data && data.groupID;
+        const memberID = data && data.memberID;
 
-        console.log(`removing memberID: ${memberID} from groupID: ${groupID}`);
+        if (!groupID || !memberID) {
+            try { socket.emit('removeGroupMemberError', { error: 'Missing parameters' }); } catch (e) {}
+            return;
+        }
+
         const groupModelInstance = new GroupModel(messagingDB);
         const groupMemberModel = groupModelInstance.GroupMember;
 
-        await groupMemberModel.destroy({
-            where: { groupID: groupID, memberID: memberID }
-        })
-        // Broadcast updated groups to affected users so their lists update immediately
-        try {
-            await broadcastGroups();
-        } catch (bErr) {
-            console.warn('broadcastGroups failed after removeFromGroup:', bErr && bErr.message);
+        // Resolve requester
+        const requesterId = socket.userID || socket.email;
+        if (!requesterId) {
+            socket.emit('removeGroupMemberError', { error: 'Unauthenticated' });
+            return;
         }
+
+        const requester = await groupMemberModel.findOne({ where: { groupID, memberID: requesterId } });
+        if (!requester) {
+            socket.emit('removeGroupMemberError', { error: 'You are not a member of this group' });
+            return;
+        }
+
+        // Only admins or owners may remove other members
+        if (!(requester.role === 'admin' || requester.role === 'owner')) {
+            socket.emit('removeGroupMemberError', { error: 'Insufficient permissions to remove members' });
+            return;
+        }
+
+        // Prevent removing the owner
+        const target = await groupMemberModel.findOne({ where: { groupID, memberID } });
+        if (!target) {
+            socket.emit('removeGroupMemberError', { error: 'Target user is not a member of this group' });
+            return;
+        }
+        if (target.role === 'owner') {
+            socket.emit('removeGroupMemberError', { error: 'Cannot remove owner' });
+            return;
+        }
+
+        await groupMemberModel.destroy({ where: { groupID: groupID, memberID: memberID } });
+        socket.emit('removeGroupMemberSuccess', { groupID, memberID });
+
+        // Broadcast updated groups to affected users so their lists update immediately
+        try { await broadcastGroups(); } catch (bErr) { console.warn('broadcastGroups failed after removeFromGroup:', bErr && bErr.message); }
+
     } catch (err) {
         console.error('Error in removeFromGroup:', err);
+        try { socket.emit('removeGroupMemberError', { error: err && err.message || 'removeFromGroup failed' }); } catch (e) {}
     }
 };
 
@@ -647,6 +811,40 @@ const leaveGroup = async (socket, data) => {
         }
     } catch (err) {
         console.error('Error in leaveGroup:', err);
+    }
+}
+
+const deleteGroup = async (socket, data) => {
+    try {
+        const groupID = data && data.groupID;
+        if (!groupID) {
+            try { socket.emit('deleteGroupError', { error: 'Missing groupID' }); } catch (e) {}
+            return;
+        }
+        const groupModelInstance = new GroupModel(messagingDB);
+        const groupMemberModel = groupModelInstance.GroupMember;
+
+        const requesterId = socket.userID || socket.email;
+        if (!requesterId) {
+            socket.emit('deleteGroupError', { error: 'Unauthenticated' });
+            return;
+        }
+
+        // Only owner can delete the group
+        const requester = await groupMemberModel.findOne({ where: { groupID, memberID: requesterId } });
+        if (!requester || requester.role !== 'owner') {
+            socket.emit('deleteGroupError', { error: 'Only the owner can delete the group' });
+            return;
+        }
+
+        await groupModelInstance.deleteGroup(groupID);
+        socket.emit('deleteGroupSuccess', { groupID });
+
+        try { await broadcastGroups(); } catch (bErr) { console.warn('broadcastGroups failed after deleteGroup:', bErr && bErr.message); }
+
+    } catch (err) {
+        console.error('Error in deleteGroup:', err);
+        try { socket.emit('deleteGroupError', { error: err && err.message || 'deleteGroup failed' }); } catch (e) {}
     }
 }
 

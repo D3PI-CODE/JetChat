@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import './chat.css';
 import io from 'socket.io-client';
 import Textbubble from './Textbubble';
-import { MdGroupAdd, MdGroupRemove, MdExitToApp } from "react-icons/md";
+import { MdGroupAdd, MdGroupRemove, MdExitToApp, MdOutlineDeleteOutline } from "react-icons/md";
 
 
 export default function Chat() {
@@ -201,6 +201,42 @@ export default function Chat() {
         socket.on('changeMemberRoleError', handleChangeRoleError);
         socket.on('changeMemberRoleSuccess', handleChangeRoleSuccess);
 
+        // Add/remove/delete group feedback handlers
+        const handleAddMemberError = (err) => { if (err && err.error) alert(`Add member failed: ${err.error}`); else alert('Add member failed'); };
+        const handleAddMemberSuccess = (data) => { console.log('addGroupMember success', data); };
+        const handleRemoveMemberError = (err) => { if (err && err.error) alert(`Remove member failed: ${err.error}`); else alert('Remove member failed'); };
+        const handleRemoveMemberSuccess = (data) => { console.log('removeGroupMember success', data); };
+        const handleDeleteGroupError = (err) => { if (err && err.error) alert(`Delete group failed: ${err.error}`); else alert('Delete group failed'); };
+        const handleDeleteGroupSuccess = (data) => {
+            console.log('deleteGroup success', data);
+            try {
+                const gid = data && data.groupID;
+                if (gid) {
+                    // remove from groups state
+                    setGroups(prev => (prev || []).filter(g => String(g.groupID) !== String(gid)));
+                    // remove members map entry
+                    setGroupMembersMap(prev => {
+                        const next = { ...(prev || {}) };
+                        delete next[gid];
+                        return next;
+                    });
+                    // remove from visible list
+                    setVisible(prev => (prev || []).filter(item => !(item.group && item.groupID && String(item.groupID) === String(gid))));
+                    // if active chat is the deleted group, clear it
+                    setActiveChat(prev => (prev && prev.groupID && String(prev.groupID) === String(gid)) ? null : prev);
+                }
+            } finally {
+                setMembersList(false);
+            }
+        };
+
+        socket.on('addGroupMemberError', handleAddMemberError);
+        socket.on('addGroupMemberSuccess', handleAddMemberSuccess);
+        socket.on('removeGroupMemberError', handleRemoveMemberError);
+        socket.on('removeGroupMemberSuccess', handleRemoveMemberSuccess);
+        socket.on('deleteGroupError', handleDeleteGroupError);
+        socket.on('deleteGroupSuccess', handleDeleteGroupSuccess);
+
         // When the server sends previous messages (merged payload)
         socket.on('previousMessages', (data) => {
             if (Array.isArray(data)) {
@@ -260,12 +296,15 @@ export default function Chat() {
                 fromEmail: data.fromEmail,
                 toEmail: data.toEmail,
                 timestamp: data.timestamp,
+                groupID: data.groupID || null,
                 type: "sent",
                 read: false,
             };
 
             const ac = activeChatRef.current;
-            if (ac && (msgObjSent.toEmail === ac.email || msgObjSent.fromEmail === ac.email)) {
+            if (!ac) return;
+            // append for 1-1 chats by email match, or for group chats by groupID
+            if ((msgObjSent.toEmail && (msgObjSent.toEmail === ac.email || msgObjSent.fromEmail === ac.email)) || (ac.group && msgObjSent.groupID && ac.groupID && String(msgObjSent.groupID) === String(ac.groupID))) {
                 setTextMessage((prev) => [...prev, msgObjSent]);
             }
         }
@@ -287,6 +326,12 @@ export default function Chat() {
             socket.off('profilePicUpdated', handleProfilePicUpdated);
             socket.off('changeMemberRoleError', handleChangeRoleError);
             socket.off('changeMemberRoleSuccess', handleChangeRoleSuccess);
+            socket.off('addGroupMemberError', handleAddMemberError);
+            socket.off('addGroupMemberSuccess', handleAddMemberSuccess);
+            socket.off('removeGroupMemberError', handleRemoveMemberError);
+            socket.off('removeGroupMemberSuccess', handleRemoveMemberSuccess);
+            socket.off('deleteGroupError', handleDeleteGroupError);
+            socket.off('deleteGroupSuccess', handleDeleteGroupSuccess);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -430,6 +475,21 @@ export default function Chat() {
         }
     }
 
+    const deleteGroup = () => {
+        if (!activeChat || !activeChat.group) {
+            alert("No active group selected.");
+            return;
+        }
+        const confirmDelete = prompt("confirm deletion of group (y/n)");
+        if (confirmDelete === "n" || confirmDelete === "N") return
+        else if (confirmDelete === "y" || confirmDelete === "Y") {
+        const socket = socketRef.current;
+            if (socket) {
+                socket.emit('deleteGroup', { groupID: activeChat.groupID, requestedByEmail: myEmail, requestedByID: myUserID });
+            }
+        } else return
+    }
+
     // derive filtered messages for the active chat only
     const filteredMessages = activeChat ? (
         activeChat.group ?
@@ -447,7 +507,9 @@ export default function Chat() {
     const myRole = (activeChat && activeChat.group && groupMembersMap[activeChat.groupID])
         ? (groupMembersMap[activeChat.groupID].find(m => (m.id && String(m.id) === String(myUserID)) || (m.email && m.email === myEmail)) || {}).role
         : null;
-    const canChangeRoles = myRole === 'admin' || myRole === 'owner';
+    const canAdd = !!myRole; // members (and above) can add
+    const canRemove = myRole === 'admin' || myRole === 'owner';
+    const canDelete = myRole === 'owner';
 
     return (
         <div className="min-h-screen min-w-screen flex bg-[#111818] font-display text-white">
@@ -524,8 +586,15 @@ export default function Chat() {
                                 <div className="absolute w-md top-16 bg-white dark:bg-[#111818] border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg p-4 z-10">
                                     <h3 className="text-md font-semibold mb-1 text-[#1F2937] dark:text-white">Group Members</h3>
                                     <div className='flex gap-2 pb-2 mb-4 border-b border-gray-300 dark:border-gray-700'>
-                                        <button onClick={addMember} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm"><MdGroupAdd/></button>
-                                        <button onClick={removeMember} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdGroupRemove /></button>
+                                        {canAdd && (
+                                            <button onClick={addMember} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm"><MdGroupAdd/></button>
+                                        )}
+                                        {canRemove && (
+                                            <button onClick={removeMember} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdGroupRemove/></button>
+                                        )}
+                                        {canDelete && (
+                                            <button onClick={deleteGroup} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdOutlineDeleteOutline/></button>
+                                        )}
                                     </div>
                                         <ul className="max-h-60 overflow-y-auto">
                                         {(groupMembersMap[activeChat?.groupID] || []).map((m) => (
@@ -540,7 +609,7 @@ export default function Chat() {
                                                     ) : (
                                                         <select
                                                             value={(m.role || 'member')}
-                                                            disabled={!canChangeRoles || ((m.id && String(m.id) === String(myUserID)) || (m.email === myEmail))}
+                                                            disabled={!canRemove || ((m.id && String(m.id) === String(myUserID)) || (m.email === myEmail))}
                                                             onChange={(e) => handleRoleChange(m, e.target.value)}
                                                             className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700"
                                                         >
@@ -567,7 +636,7 @@ export default function Chat() {
 
                 <div ref={textpanel} className="flex-1 overflow-y-auto p-6 space-y-6">
                     {/*text messages*/}
-                    <Textbubble messages={filteredMessages} activeChat={activeChat}/>
+                    <Textbubble messages={filteredMessages} activeChat={activeChat} users={users} groupMembersMap={groupMembersMap}/>
                 </div>
 
                 <footer className="bg-white dark:bg-[#111818] p-4 border-t border-gray-200 dark:border-gray-800">
