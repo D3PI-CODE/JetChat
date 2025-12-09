@@ -182,6 +182,8 @@ export const connection =  async (socket) => {
     socket.on("changeMemberRole", (data) => changeRole(socket, data));
 
     socket.on("leaveGroup", (data) => leaveGroup(socket, data));
+
+    socket.on("renameGroup", (data) => renameGroup(socket, data));
     
     
     // When a socket disconnects, broadcast the updated list of user IDs
@@ -847,5 +849,50 @@ const deleteGroup = async (socket, data) => {
         try { socket.emit('deleteGroupError', { error: err && err.message || 'deleteGroup failed' }); } catch (e) {}
     }
 }
+
+const renameGroup = async (socket, data) => {
+    try {
+        const groupID = data && data.groupID;
+        const newName = data && data.newGroupName;
+        
+        if (!groupID || !newName) {
+            try { socket.emit('renameGroupError', { error: `Missing parameters ${newName} & ${groupID}` }); } catch (e) {}
+            return;
+        }
+        const groupModelInstance = new GroupModel(messagingDB);
+        const groupMemberModel = groupModelInstance.GroupMember;
+        
+        const requesterId = socket.userID || socket.email;
+        if (!requesterId) {
+            socket.emit('renameGroupError', { error: 'Unauthenticated' });
+            return;
+        }
+        
+        // Only members can rename the group
+        const requester = await groupMemberModel.findOne({ where: { groupID, memberID: requesterId } });
+        if (!requester) {
+            socket.emit('renameGroupError', { error: 'You must be a group member to rename it' });
+            return;
+        }
+        
+        await groupModelInstance.getGroupModel().update(
+            { groupName: newName },
+            { where: { groupid: groupID } }
+        );
+        socket.emit('renameGroupSuccess', { groupID, newGroupName: newName });
+        console.log(`Group renamed successfully: groupID ${groupID} to newGroupName ${newName}`);
+        
+        // Broadcast updated group list to all connected clients
+        try {
+            await broadcastGroups();
+        } catch (broadcastErr) {
+            console.warn('Failed to broadcast groups after renaming:', broadcastErr && broadcastErr.message);
+        }
+        
+    } catch (err) {
+        console.error('Error in renameGroup:', err);
+        try { socket.emit('renameGroupError', { error: err && err.message || 'renameGroup failed' }); } catch (e) {}
+    }
+};
 
 

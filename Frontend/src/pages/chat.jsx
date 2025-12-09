@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import './chat.css';
 import io from 'socket.io-client';
 import Textbubble from './Textbubble';
-import { MdGroupAdd, MdGroupRemove, MdExitToApp, MdOutlineDeleteOutline } from "react-icons/md";
+import { MdGroupAdd, MdGroupRemove, MdExitToApp, MdOutlineDeleteOutline, MdDriveFileRenameOutline } from "react-icons/md";
+
 
 
 export default function Chat() {
@@ -11,7 +12,6 @@ export default function Chat() {
     // state for previous messages are split into sent/received
     const [textMessage, setTextMessage] = useState([]);
     const [users, setUsers] = useState([]);
-    const [groups, setGroups] = useState([]);
     const [groupMembersMap, setGroupMembersMap] = useState({});
     const socketRef = useRef(null);
     const [visible, setVisible] = useState(users.filter((u) => !u.self));
@@ -141,7 +141,6 @@ export default function Chat() {
                 group:true,
             }));
             console.log('Connected groups:', processed);
-            setGroups(processed);
             // Replace any existing group entries in `visible` with the latest processed list
             setVisible((prev) => {
                 const nonGroupItems = (prev || []).filter(item => !item.group);
@@ -212,8 +211,6 @@ export default function Chat() {
             try {
                 const gid = data && data.groupID;
                 if (gid) {
-                    // remove from groups state
-                    setGroups(prev => (prev || []).filter(g => String(g.groupID) !== String(gid)));
                     // remove members map entry
                     setGroupMembersMap(prev => {
                         const next = { ...(prev || {}) };
@@ -230,6 +227,16 @@ export default function Chat() {
             }
         };
 
+        const handleRenameGroupSuccess = (data) => {
+            console.log('renameGroup success', data);
+        };
+        const handleRenameGroupError = (err) => {
+            console.error('renameGroup error:', err);
+            if (err && err.error) alert(`Rename group failed: ${err.error}`);
+            else alert('Rename group failed');
+        };
+        socket.on('renameGroupSuccess', handleRenameGroupSuccess);
+        socket.on('renameGroupError', handleRenameGroupError);
         socket.on('addGroupMemberError', handleAddMemberError);
         socket.on('addGroupMemberSuccess', handleAddMemberSuccess);
         socket.on('removeGroupMemberError', handleRemoveMemberError);
@@ -446,6 +453,19 @@ export default function Chat() {
         }
     };
 
+    const renameGroup = () => {
+        const newGroupName = prompt("Enter the new group name:");
+        if (!newGroupName) return;
+        if (!activeChat || !activeChat.group) {
+            alert("No active group selected.");
+            return;
+        }
+        const socket = socketRef.current;
+        if (socket) {
+            socket.emit('renameGroup', { groupID: activeChat.groupID, newGroupName, requestedByEmail: myEmail, requestedByID: myUserID });
+        }
+    };
+
     // Handle role changes from the dropdown. Frontend enforces only admins/owners
     // can change other members' roles; the backend will perform authoritative checks.
     const handleRoleChange = (member, role) => {
@@ -507,9 +527,9 @@ export default function Chat() {
     const myRole = (activeChat && activeChat.group && groupMembersMap[activeChat.groupID])
         ? (groupMembersMap[activeChat.groupID].find(m => (m.id && String(m.id) === String(myUserID)) || (m.email && m.email === myEmail)) || {}).role
         : null;
-    const canAdd = !!myRole; // members (and above) can add
-    const canRemove = myRole === 'admin' || myRole === 'owner';
-    const canDelete = myRole === 'owner';
+    const isMember = !!myRole; // members (and above) can add
+    const isAdmin = myRole === 'admin' || myRole === 'owner';
+    const isOwner = myRole === 'owner';
 
     return (
         <div className="min-h-screen min-w-screen flex bg-[#111818] font-display text-white">
@@ -586,13 +606,16 @@ export default function Chat() {
                                 <div className="absolute w-md top-16 bg-white dark:bg-[#111818] border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg p-4 z-10">
                                     <h3 className="text-md font-semibold mb-1 text-[#1F2937] dark:text-white">Group Members</h3>
                                     <div className='flex gap-2 pb-2 mb-4 border-b border-gray-300 dark:border-gray-700'>
-                                        {canAdd && (
+                                        {isMember && (
                                             <button onClick={addMember} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm"><MdGroupAdd/></button>
                                         )}
-                                        {canRemove && (
-                                            <button onClick={removeMember} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdGroupRemove/></button>
+                                        {isAdmin && (
+                                            <div className='flex gap-2'>
+                                                <button onClick={renameGroup} className="mt-2 px-3 py-1 bg-[#828282] text-white rounded-md text-sm"><MdDriveFileRenameOutline/></button>
+                                                <button onClick={removeMember} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdGroupRemove/></button>
+                                            </div>
                                         )}
-                                        {canDelete && (
+                                        {isOwner && (
                                             <button onClick={deleteGroup} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdOutlineDeleteOutline/></button>
                                         )}
                                     </div>
@@ -609,7 +632,7 @@ export default function Chat() {
                                                     ) : (
                                                         <select
                                                             value={(m.role || 'member')}
-                                                            disabled={!canRemove || ((m.id && String(m.id) === String(myUserID)) || (m.email === myEmail))}
+                                                            disabled={!isAdmin || ((m.id && String(m.id) === String(myUserID)) || (m.email === myEmail))}
                                                             onChange={(e) => handleRoleChange(m, e.target.value)}
                                                             className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700"
                                                         >
