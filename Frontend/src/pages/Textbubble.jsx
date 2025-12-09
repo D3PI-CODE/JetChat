@@ -18,7 +18,9 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                 const read = m.read;
 
                 // Determine avatar for this message. Prefer explicit sender avatar from the message payload,
-                // then try activeChat (group avatar), then users/groupMembers lookup.
+                // then try activeChat (private chat avatar), then users/groupMembers lookup.
+                // For group chats we intentionally do NOT render avatars inside message bubbles;
+                // avatars are shown in the conversation list only.
                 let messageAvatar = (m && m.fromAvatar) || activeChat?.avatarUrl || null;
                 const isGroup = !!(activeChat && activeChat.group);
                 if (isGroup) {
@@ -36,7 +38,7 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                     }
                 }
 
-                // Render sent messages on the right; for group chats we still show avatar (on the right)
+                // Render sent messages on the right; for group chats we do NOT show avatar in the bubble
                 if (type === 'sent') {
                     if (isGroup) {
                         return (
@@ -48,7 +50,6 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                                     <span className="text-xs text-gray-400 dark:text-gray-500 flex gap-2">{ts ? new Date(ts).toLocaleTimeString() : ''} 
                                         {read ? <RiCheckDoubleLine className="material-symbols-outlined text-sm text-[#137fec]"/> : null} </span> 
                                 </div>
-                                <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-8 h-8 shrink-0" style={{backgroundImage: messageAvatar ? `url('${messageAvatar}')` : `url('https://placehold.co/8')`}}></div>
                             </div>
                         );
                     }
@@ -66,6 +67,19 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                     );
                 } else {
                     // received
+                    if (isGroup) {
+                        return (
+                            <div key={idx} className="flex items-start gap-3 max-w-xl">
+                                <div className="flex flex-col gap-1">
+                                    <div className="rounded-xl rounded-bl-none bg-white dark:bg-gray-700 p-3 shadow-sm">
+                                        <p className="text-sm text-gray-800 dark:text-gray-200">{content}</p>
+                                    </div>
+                                    <span className="text-xs text-gray-400 dark:text-gray-500">{ts ? new Date(ts).toLocaleTimeString() : ''}</span>
+                                </div>
+                            </div>
+                        );
+                    }
+
                     return (
                         <div key={idx} className="flex items-start gap-3 max-w-xl">
                             <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-8 h-8 shrink-0" style={{backgroundImage: messageAvatar ? `url('${messageAvatar}')` : `url('https://placehold.co/8')`}}></div>

@@ -4,8 +4,6 @@ import io from 'socket.io-client';
 import Textbubble from './Textbubble';
 import { MdGroupAdd, MdGroupRemove, MdExitToApp, MdOutlineDeleteOutline, MdDriveFileRenameOutline } from "react-icons/md";
 
-
-
 export default function Chat() {
     // Theme: use #111818 as the primary panel/background color across the chat UI
     const [message, setMessage] = useState('');
@@ -138,6 +136,7 @@ export default function Chat() {
                 userID: group.groupid, // use same key as users so list rendering works
                 description: group.description || '',
                 CreatorID: group.CreatorID,
+                groupAvatarUrl: group.groupAvatar || group.groupAvatarUrl || null,
                 group:true,
             }));
             console.log('Connected groups:', processed);
@@ -235,6 +234,25 @@ export default function Chat() {
             if (err && err.error) alert(`Rename group failed: ${err.error}`);
             else alert('Rename group failed');
         };
+
+        const handleChangeGroupAvatarSuccess = (data) => {
+            console.log('changeGroupAvatar success', data);
+            // backend sends { groupID, groupAvatar }
+            const { groupID, groupAvatar, newAvatarUrl } = data || {};
+            const url = groupAvatar || newAvatarUrl || null;
+            if (!url) return;
+            setVisible((prev) => (prev || []).map(item => (item && item.group && item.groupID && String(item.groupID) === String(groupID)) ? { ...item, groupAvatarUrl: url } : item));
+            // also update activeChat if it's the same group so header updates immediately
+            setActiveChat(prev => (prev && prev.groupID && String(prev.groupID) === String(groupID)) ? { ...prev, groupAvatarUrl: url } : prev);
+        };
+        const handleChangeGroupAvatarError = (err) => {
+            console.error('changeGroupAvatar error:', err);
+            if (err && err.error) alert(`Change group avatar failed: ${err.error}`);
+            else alert('Change group avatar failed');
+        };
+
+        socket.on('changeGroupAvatarError', handleChangeGroupAvatarError);
+        socket.on('changeGroupAvatarSuccess', handleChangeGroupAvatarSuccess);
         socket.on('renameGroupSuccess', handleRenameGroupSuccess);
         socket.on('renameGroupError', handleRenameGroupError);
         socket.on('addGroupMemberError', handleAddMemberError);
@@ -484,6 +502,50 @@ export default function Chat() {
         }
     }
 
+    const changeGroupAvatar = () => {
+        const memberEmail = myEmail;
+        const memberID = myUserID;
+        // If the currently active chat is a group, update the group avatar.
+        // Otherwise, fall back to updating the user's profile avatar.
+        if (!activeChat) {
+            alert("No active chat selected.");
+            return;
+        }
+
+        if (!activeChat.group) {
+            return;
+        }
+
+        // activeChat.group === true -> change the group avatar via a temporary input
+        const tmp = document.createElement('input');
+        tmp.type = 'file';
+        tmp.accept = 'image/*';
+        tmp.style.display = 'none';
+        const handleTmpChange = (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) {
+                document.body.removeChild(tmp);
+                return;
+            }
+            if (!file.type.startsWith('image/')) {
+                document.body.removeChild(tmp);
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+                const socket = socketRef.current;
+                if (socket) {
+                    socket.emit("changeGroupAvatar", { imageData: reader.result, groupID: activeChat.groupID, requestedByEmail: memberEmail, requestedByID: memberID });
+                }
+                document.body.removeChild(tmp);
+            };
+            reader.readAsDataURL(file);
+        };
+        tmp.addEventListener('change', handleTmpChange, { once: true });
+        document.body.appendChild(tmp);
+        tmp.click();
+    }
+
     const leaveGroup = () => {
         if (!activeChat || !activeChat.group) {
             alert("No active group selected.");
@@ -574,7 +636,7 @@ export default function Chat() {
                             <div key={u.userID} onClick={() => setActiveChat(u)} className={`flex cursor-pointer gap-4 px-4 py-3 justify-between ${activeChat?.userID === u.userID ? 'bg-[#137fec]/20 dark:bg-[#137fec]/30 border-r-4 border-[#137fec]' : ''}`}>
                                 <div className="flex items-center gap-4">
                                     <div className="relative shrink-0">
-                                        <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-14 h-14" style={{backgroundImage: u.avatarUrl ? `url('${u.avatarUrl}')` : `url('https://placehold.co/14')`}}></div>
+                                        <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-14 h-14" style={{backgroundImage: (u.avatarUrl || u.groupAvatarUrl) ? `url('${u.avatarUrl || u.groupAvatarUrl}')` : `url('https://placehold.co/14')`}}></div>
                                         <span className={`absolute bottom-0 right-0 block h-3.5 w-3.5 rounded-full border-2 border-white dark:border-[#0f1720] ${u.online ? 'bg-[#10B981]' : 'bg-gray-400 dark:bg-gray-600'}`}></span>
                                     </div>
                                     <div className="flex flex-1 flex-col justify-center">
@@ -597,10 +659,10 @@ export default function Chat() {
                 <header className="flex shrink-0 items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#111818] px-6 py-4">
                     <div className="flex items-center gap-4">
                         <div className="relative">
-                                <div onClick = {() => setMembersList(true)} className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12" style={{backgroundImage: activeChat?.avatarUrl ? `url('${activeChat.avatarUrl}')` : `url('https://placehold.co/12')`}}></div>
+                            <div onClick={changeGroupAvatar} className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12" style={{backgroundImage: activeChat ? (activeChat.group ? (activeChat.groupAvatarUrl ? `url('${activeChat.groupAvatarUrl}')` : `url('https://placehold.co/12')`) : (activeChat.avatarUrl ? `url('${activeChat.avatarUrl}')` : `url('https://placehold.co/12')`)) : `url('https://placehold.co/12')`}}></div>
                         </div>
                         <div className="relative flex flex-col">
-                            <h2 className="text-lg font-semibold text-[#1F2937] dark:text-white">{activeChat?.username ?? 'Select a chat'}</h2>
+                            <h2 onClick = {() => setMembersList(true)} className="text-lg font-semibold text-[#1F2937] dark:text-white">{activeChat?.username ?? 'Select a chat'}</h2>
                             <p className={`text-sm ${activeChat?.online ? 'text-green-500' : 'text-gray-400'}`}>{activeChat ? (activeChat.online ? 'Online' : 'Offline') : ''}</p>
                             {membersList && groupMembersMap[activeChat?.groupID] && (
                                 <div className="absolute w-md top-16 bg-white dark:bg-[#111818] border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg p-4 z-10">

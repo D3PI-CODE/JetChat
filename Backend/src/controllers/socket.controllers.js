@@ -61,6 +61,9 @@ export const broadcastGroups = async () => {
                 groupName: g.groupName,
                 description: g.description,
                 CreatorID: g.CreatorID,
+                // support either column name: `groupAvatar` or `groupAvatarUrl`
+                groupAvatar: g.groupAvatar || g.groupAvatarUrl || null,
+                groupAvatarUrl: g.groupAvatarUrl || g.groupAvatar || null,
                 members: [],
             });
         }
@@ -184,6 +187,8 @@ export const connection =  async (socket) => {
     socket.on("leaveGroup", (data) => leaveGroup(socket, data));
 
     socket.on("renameGroup", (data) => renameGroup(socket, data));
+
+    socket.on("changeGroupAvatar", (data) => changeGroupAvatar(socket, data));
     
     
     // When a socket disconnects, broadcast the updated list of user IDs
@@ -892,6 +897,75 @@ const renameGroup = async (socket, data) => {
     } catch (err) {
         console.error('Error in renameGroup:', err);
         try { socket.emit('renameGroupError', { error: err && err.message || 'renameGroup failed' }); } catch (e) {}
+    }
+};
+
+const changeGroupAvatar = async (socket, data) => {
+    try {
+        const groupID = data && data.groupID;
+        if (!groupID) {
+            try { socket.emit('changeGroupAvatarError', { error: 'Missing groupID' }); } catch (e) {}
+            return;
+        }
+        const groupModelInstance = new GroupModel(messagingDB);
+        const groupMemberModel = groupModelInstance.GroupMember;
+
+        const requesterId = socket.userID || socket.email;
+        if (!requesterId) {
+            socket.emit('changeGroupAvatarError', { error: 'Unauthenticated' });
+            return;
+        }
+
+        // Only members can change the group avatar
+        const requester = await groupMemberModel.findOne({ where: { groupID, memberID: requesterId } });
+        if (!requester) {
+            socket.emit('changeGroupAvatarError', { error: 'You must be a group member to change the avatar' });
+            return;
+        }
+
+        // Upload new avatar to Cloudinary
+        let payload = data.imageData && typeof data.imageData === 'string' ? data.imageData.trim() : '';
+        const base64Only = /^[A-Za-z0-9+/]+={0,2}$/.test(payload) && !payload.startsWith('data:');
+        if (base64Only) {
+            payload = `data:image/jpeg;base64,${payload}`;
+        }
+
+        console.log(`Uploading new avatar for groupID: ${groupID} by memberID: ${requesterId}`);
+        const result = await Cloudinary.uploader.upload(payload, {
+            folder: 'group_avatars',
+            resource_type: 'image',
+        });
+        console.log('Cloudinary upload result for group avatar:', { public_id: result?.public_id, secure_url: result?.secure_url });
+        const imageUrl = result?.secure_url;
+        if (!imageUrl) {
+            throw new Error('Cloudinary did not return a secure_url for group avatar');
+        }
+
+        // Update group record in DB with new avatarUrl
+        await groupModelInstance.getGroupModel().update(
+            { groupAvatarUrl: imageUrl },
+            { where: { groupid: groupID } }
+        );
+        socket.emit('changeGroupAvatarSuccess', { groupID, groupAvatarUrl: imageUrl, groupAvatar: imageUrl });
+        // Also emit globally so clients that may not receive the per-member `groups` broadcast
+        // update their UI immediately. broadcastGroups will also run below.
+        try {
+            io.emit('changeGroupAvatarSuccess', { groupID, groupAvatarUrl: imageUrl, groupAvatar: imageUrl });
+        } catch (e) {
+            console.warn('Global emit changeGroupAvatarSuccess failed:', e && e.message);
+        }
+        console.log(`Group avatar updated successfully: groupID ${groupID}`);
+
+        // Broadcast updated groups to all connected clients
+        try {
+            await broadcastGroups();
+        } catch (broadcastErr) {
+            console.warn('Failed to broadcast groups after changing avatar:', broadcastErr && broadcastErr.message);
+        }
+
+    } catch (err) {
+        console.error('Error in changeGroupAvatar:', err);
+        try { socket.emit('changeGroupAvatarError', { error: err && err.message || 'changeGroupAvatar failed' }); } catch (e) {}
     }
 };
 

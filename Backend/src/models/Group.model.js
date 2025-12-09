@@ -23,6 +23,10 @@ export const group = (sequelize) => {
                 type: Sequelize.STRING,
                 allowNull: false,
             },
+            groupAvatarUrl: {
+                type: Sequelize.STRING,
+                allowNull: true,
+            },
         },
         {
             tableName: 'groups',
