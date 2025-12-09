@@ -11,7 +11,10 @@ export default function Chat() {
     const [textMessage, setTextMessage] = useState([]);
     const [users, setUsers] = useState([]);
     const [groupMembersMap, setGroupMembersMap] = useState({});
+    const [typingMap, setTypingMap] = useState({}); // key -> array of {id, username}
     const socketRef = useRef(null);
+    const typingTimeoutRef = useRef(null);
+    const isTypingRef = useRef(false);
     const [visible, setVisible] = useState(users.filter((u) => !u.self));
     const [activeChat, setActiveChat] = useState(null);
     const textpanel = useRef(null);
@@ -178,6 +181,22 @@ export default function Chat() {
         socket.on("users", usrMangement);
         socket.on("groups", grpMangement);
 
+        // Typing indicator updates from server
+        const handleTypingUpdate = (data) => {
+            if (!data) return;
+            // group update
+            if (data.groupID) {
+                setTypingMap(prev => ({ ...(prev || {}), [String(data.groupID)]: (Array.isArray(data.typingUsers) ? data.typingUsers : []) }));
+                return;
+            }
+            // private chat: data.chatKey identifies the sender
+            if (data.chatKey) {
+                const key = String(data.chatKey);
+                setTypingMap(prev => ({ ...(prev || {}), [key]: (Array.isArray(data.typingUsers) ? data.typingUsers : []) }));
+            }
+        };
+        socket.on('typingUpdate', handleTypingUpdate);
+
         // When server confirms a profile picture update, update local state immediately
         const handleProfilePicUpdated = (data) => {
             if (!data || !data.email) return;
@@ -286,6 +305,7 @@ export default function Chat() {
             }
         });
 
+
         socket.on('previousMessagesError', (err) => {
             console.error('previousMessagesError:', err);
         });
@@ -321,6 +341,8 @@ export default function Chat() {
             }
         };
 
+        // stop typing for incoming messages from others (handled above via handleTypingUpdate)
+
         const handleSent = (data) => {
             
             const msgObjSent = {
@@ -343,6 +365,17 @@ export default function Chat() {
             // append for 1-1 chats by email match, or for group chats by groupID
             if ((msgObjSent.toEmail && (msgObjSent.toEmail === ac.email || msgObjSent.fromEmail === ac.email)) || (ac.group && msgObjSent.groupID && ac.groupID && String(msgObjSent.groupID) === String(ac.groupID))) {
                 setTextMessage((prev) => [...prev, msgObjSent]);
+                // on send, signal stopTyping for this chat so indicator clears immediately
+                try {
+                    const sock = socketRef.current;
+                    if (sock) {
+                        const payload = ac.group ? { groupID: ac.groupID, fromUserId: myUserID, fromEmail: myEmail, fromUsername: users.find(u=>u.email===myEmail)?.username || myEmail } : { toUserId: ac.userID, toEmail: ac.email, fromUserId: myUserID, fromEmail: myEmail, fromUsername: users.find(u=>u.email===myEmail)?.username || myEmail };
+                        sock.emit('typingStop', payload);
+                        if (typingTimeoutRef.current) { clearTimeout(typingTimeoutRef.current); typingTimeoutRef.current = null; isTypingRef.current = false; }
+                    }
+                } catch (e) {
+                    console.error('Error emitting typingStop after send:', e);
+                }
             }
         }
 
@@ -369,6 +402,7 @@ export default function Chat() {
             socket.off('removeGroupMemberSuccess', handleRemoveMemberSuccess);
             socket.off('deleteGroupError', handleDeleteGroupError);
             socket.off('deleteGroupSuccess', handleDeleteGroupSuccess);
+            socket.off('typingUpdate', handleTypingUpdate);
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -387,6 +421,21 @@ export default function Chat() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeChat]);
+
+    // Clean up typing indicator when component unmounts or activeChat changes
+    useEffect(() => {
+        return () => {
+            try {
+                const sock = socketRef.current;
+                const ac = activeChatRef.current;
+                if (sock && ac) {
+                    const payload = ac.group ? { groupID: ac.groupID, fromUserId: myUserID, fromEmail: myEmail, fromUsername: users.find(u=>u.email===myEmail)?.username || myEmail } : { toUserId: ac.userID, toEmail: ac.email, fromUserId: myUserID, fromEmail: myEmail, fromUsername: users.find(u=>u.email===myEmail)?.username || myEmail };
+                    sock.emit('typingStop', payload);
+                }
+            } catch (err) { console.warn('Error emitting typingStop on unmount:', err); }
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         if (textpanel.current) {
@@ -430,6 +479,26 @@ export default function Chat() {
         }
         // append locally so sender sees their message immediately (use email for matching)
         setMessage('');
+    };
+
+    const handleTypingLocal = () => {
+        try {
+            const sock = socketRef.current;
+            const ac = activeChatRef.current;
+            if (!sock || !ac) return;
+            const myName = users.find(u => u.email === myEmail)?.username || myEmail;
+            const payload = ac.group ? { groupID: ac.groupID, fromUserId: myUserID, fromEmail: myEmail, fromUsername: myName } : { toUserId: ac.userID, toEmail: ac.email, fromUserId: myUserID, fromEmail: myEmail, fromUsername: myName };
+            if (!isTypingRef.current) {
+                sock.emit('typingStart', payload);
+                isTypingRef.current = true;
+            }
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => {
+                try { sock.emit('typingStop', payload); } catch (err) { console.warn('typingStop emit failed', err); }
+                isTypingRef.current = false;
+                typingTimeoutRef.current = null;
+            }, 2000);
+        } catch (err) { console.warn('handleTypingLocal error', err); }
     };
 
     const createGroup = () => {
@@ -605,6 +674,16 @@ export default function Chat() {
     const isAdmin = myRole === 'admin' || myRole === 'owner';
     const isOwner = myRole === 'owner';
 
+    // Compute a friendly typing indicator for the active chat
+    const typingText = (() => {
+        if (!activeChat) return null;
+        const key = activeChat.group ? String(activeChat.groupID) : (activeChat.userID || activeChat.email);
+        const list = typingMap && typingMap[key] ? typingMap[key] : [];
+        if (!list || list.length === 0) return null;
+        if (list.length === 1) return `${list[0].username || list[0].name || 'Someone'} is typing...`;
+        return `${list.length} people are typing...`;
+    })();
+
     return (
         <div className="min-h-screen min-w-screen flex bg-[#111818] font-display text-white">
             {/* Column 1: Main Navigation Panel */}
@@ -736,10 +815,15 @@ export default function Chat() {
                     <Textbubble messages={filteredMessages} activeChat={activeChat} users={users} groupMembersMap={groupMembersMap}/>
                 </div>
 
+                {/* typing indicator */}
+                <div className="px-6 pb-2 text-sm text-gray-700 dark:text-gray-300">
+                    {typingText ? <span>{typingText}</span> : null}
+                </div>
+
                 <footer className="bg-white dark:bg-[#111818] p-4 border-t border-gray-200 dark:border-gray-800">
                     <div className="flex items-center gap-2">
                         <form className='flex w-full gap-2' onSubmit={(e) => { e.target.reset(); sendMessage(); e.preventDefault(); }}>
-                            <input className="flex-1 rounded-md border-gray-200 dark:border-gray-700 bg-[#363d3d] dark:bg-[#182222] px-4 py-2.5 text-sm focus:border-[#363d3d] focus:ring-[#363d3d] dark:text-white dark:placeholder:text-gray-500" placeholder="Type a message..." type="text" onChange={(e) => setMessage(e.target.value)} />
+                            <input className="flex-1 rounded-md border-gray-200 dark:border-gray-700 bg-[#363d3d] dark:bg-[#182222] px-4 py-2.5 text-sm focus:border-[#363d3d] focus:ring-[#363d3d] dark:text-white dark:placeholder:text-gray-500" placeholder="Type a message..." type="text" onChange={(e) => { setMessage(e.target.value); handleTypingLocal(); }} />
                             <button className="text-white bg-[#1c2f2f] box-border border border-transparent hover:bg-[#363d3d] focus:ring-4 focus:ring-[#363d3d]/30 shadow-xs font-medium leading-5 rounded-md text-sm px-4 py-2.5 focus:outline-none" type='submit'>
                                 <span className="material-symbols-outlined">send</span>
                             </button>

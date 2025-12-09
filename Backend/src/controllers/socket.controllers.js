@@ -7,6 +7,9 @@ import { GroupMemberModel } from '../models/groupMember.model.js';
 import { group, GroupModel } from '../models/Group.model.js';
 import { where } from 'sequelize';
 
+// In-memory typing trackers (ephemeral)
+const groupTypingMap = new Map(); // groupID -> Map<senderKey, { id, username }>
+
 // Broadcast current users and their online status to all connected sockets.
 export const broadcastUserIds = async () => {
     try {
@@ -162,6 +165,96 @@ export const connection =  async (socket) => {
     broadcastUserIds();
     broadcastGroups();
 
+    // Typing indicator handlers
+    socket.on('typingStart', async (data) => {
+        try {
+            const fromUserId = data && data.fromUserId;
+            const fromEmail = data && data.fromEmail;
+            const fromUsername = data && data.fromUsername;
+            const groupID = data && data.groupID;
+
+            // For group chats maintain a set and broadcast the current set to members
+            if (groupID) {
+                const key = String(groupID);
+                let map = groupTypingMap.get(key);
+                if (!map) { map = new Map(); groupTypingMap.set(key, map); }
+                const senderKey = String(fromUserId || fromEmail || fromUsername || socket.userID || socket.email);
+                map.set(senderKey, { id: fromUserId || fromEmail || null, username: fromUsername || fromEmail || null });
+
+                // emit updated typing list to all group members (except the sender)
+                try {
+                    const groupModelInstance = new GroupModel(messagingDB);
+                    const groupMemberModel = groupModelInstance.GroupMember;
+                    const members = await groupMemberModel.findAll({ where: { groupID } });
+                    const typingUsers = Array.from(map.values());
+                    for (const m of members) {
+                        const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
+                        if (!memberId) continue;
+                        // skip sender
+                        if (String(memberId) === String(senderKey)) continue;
+                        try { io.to(String(memberId)).emit('typingUpdate', { groupID, typingUsers }); } catch (e) {}
+                    }
+                } catch (e) {
+                    console.warn('typingStart: could not notify group members', e && e.message);
+                }
+            } else {
+                // Private chat: notify single recipient room (toEmail or toUserId must be provided)
+                const toUserId = data && data.toUserId;
+                const toEmail = data && data.toEmail;
+                const receiverRoom = toUserId ? String(toUserId) : (toEmail ? String(toEmail) : null);
+                if (receiverRoom) {
+                    try {
+                        io.to(receiverRoom).emit('typingUpdate', { chatKey: String(fromUserId || fromEmail || fromUsername || socket.userID || socket.email), typingUsers: [{ id: fromUserId || fromEmail || null, username: fromUsername || fromEmail || null }] });
+                    } catch (e) { console.warn('typingStart private emit failed', e && e.message); }
+                }
+            }
+        } catch (err) {
+            console.error('Error in typingStart handler:', err && err.message);
+        }
+    });
+
+    socket.on('typingStop', async (data) => {
+        try {
+            const fromUserId = data && data.fromUserId;
+            const fromEmail = data && data.fromEmail;
+            const fromUsername = data && data.fromUsername;
+            const groupID = data && data.groupID;
+
+            if (groupID) {
+                const key = String(groupID);
+                const map = groupTypingMap.get(key);
+                if (map) {
+                    const senderKey = String(fromUserId || fromEmail || fromUsername || socket.userID || socket.email);
+                    map.delete(senderKey);
+                    const typingUsers = Array.from(map.values());
+                    try {
+                        const groupModelInstance = new GroupModel(messagingDB);
+                        const groupMemberModel = groupModelInstance.GroupMember;
+                        const members = await groupMemberModel.findAll({ where: { groupID } });
+                        for (const m of members) {
+                            const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
+                            if (!memberId) continue;
+                            try { io.to(String(memberId)).emit('typingUpdate', { groupID, typingUsers }); } catch (e) {}
+                        }
+                    } catch (e) {
+                        console.warn('typingStop: could not notify group members', e && e.message);
+                    }
+                }
+            } else {
+                const toUserId = data && data.toUserId;
+                const toEmail = data && data.toEmail;
+                const receiverRoom = toUserId ? String(toUserId) : (toEmail ? String(toEmail) : null);
+                if (receiverRoom) {
+                    try {
+                        io.to(receiverRoom).emit('typingUpdate', { chatKey: String(fromUserId || fromEmail || fromUsername || socket.userID || socket.email), typingUsers: [] });
+                    } catch (e) { console.warn('typingStop private emit failed', e && e.message); }
+                }
+            }
+        } catch (err) {
+            console.error('Error in typingStop handler:', err && err.message);
+        }
+    });
+
     // Ensure getMessages replies only to the requesting socket
     socket.on("getMessages", (data) => getMessages(socket, data));
 
@@ -194,6 +287,29 @@ export const connection =  async (socket) => {
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {
         console.log("user disconnected: " + socket.id + " (userID: " + socket.userID + ")");
+        // remove from any typing maps
+        try {
+            for (const [gid, map] of Array.from(groupTypingMap.entries())) {
+                try {
+                    const senderKey1 = String(socket.userID || socket.email || '');
+                    if (map && map.delete && map.delete(senderKey1)) {
+                        // notify remaining members about updated typing list
+                        const typingUsers = Array.from(map.values());
+                        (async () => {
+                            try {
+                                const groupModelInstance = new GroupModel(messagingDB);
+                                const members = await groupModelInstance.GroupMember.findAll({ where: { groupID: gid } });
+                                for (const m of members) {
+                                    const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
+                                    if (!memberId) continue;
+                                    try { io.to(String(memberId)).emit('typingUpdate', { groupID: gid, typingUsers }); } catch (e) {}
+                                }
+                            } catch (e) {}
+                        })();
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {}
         broadcastUserIds();
     });
 };
