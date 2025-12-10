@@ -36,14 +36,6 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                     if (senderEmail) user = users.find(u => u.email === senderEmail) || null;
                     if (!user && senderId) user = users.find(u => String(u.userID) === String(senderId)) || null;
                     if (user && user.avatarUrl) messageAvatar = messageAvatar || user.avatarUrl;
-                    // fallback: try to find in groupMembersMap for name/email (they may not have avatarUrl)
-                    if (!messageAvatar && activeChat?.groupID && groupMembersMap && groupMembersMap[activeChat.groupID]) {
-                        const member = groupMembersMap[activeChat.groupID].find(x => (x.email && x.email === senderEmail) || (x.id && String(x.id) === String(senderId)));
-                        if (member && member.avatarUrl) messageAvatar = messageAvatar || member.avatarUrl;
-                    }
-                    // determine a display name for group messages. Prefer explicit
-                    // username fields sent by the server (`fromUsername` / `username`),
-                    // then fallback to `fromName`, and then to user/group member lookups.
                     senderDisplayName = m.fromUsername || m.username || m.fromName || (user && (user.username || user.email)) || null;
                     if (!senderDisplayName && activeChat?.groupID && groupMembersMap && groupMembersMap[activeChat.groupID]) {
                         const member = groupMembersMap[activeChat.groupID].find(x => (x.email && x.email === senderEmail) || (x.id && String(x.id) === String(senderId)));

@@ -104,6 +104,17 @@ class MessageModel {
             { where: { messageid: messageID } }
         );
     }
+
+    countUnreadMessages(userID, receiverID) {
+        return this.Message.count({
+            where: {
+                senderID: userID,
+                receiverID: receiverID,
+                read: false,
+            },
+        });
+    }
+
     async sync(options = {}) {
         await this.sequelize.sync(options);
     }

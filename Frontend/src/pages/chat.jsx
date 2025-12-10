@@ -3,6 +3,7 @@ import './chat.css';
 import io from 'socket.io-client';
 import Textbubble from './Textbubble';
 import { MdGroupAdd, MdGroupRemove, MdExitToApp, MdOutlineDeleteOutline, MdDriveFileRenameOutline } from "react-icons/md";
+import { SelectValueText } from '@ark-ui/react';
 
 export default function Chat() {
     // Theme: use #111818 as the primary panel/background color across the chat UI
@@ -181,6 +182,18 @@ export default function Chat() {
         socket.on("users", usrMangement);
         socket.on("groups", grpMangement);
 
+        socket.on("unreadMessageCount", (data) => {
+            console.log(data.count)
+            setVisible((prev) => prev.map(u => {
+                if (u.userID === data.userID) {
+                    return { ...u, unreadCount: data.count };
+                }
+                return u;
+            }));
+            console.log("unreadMessageCount data received: ", data);
+            console.log("Updated users list: ", visible);
+        });
+
         // Typing indicator updates from server
         const handleTypingUpdate = (data) => {
             if (!data) return;
@@ -215,8 +228,6 @@ export default function Chat() {
         const handleChangeRoleSuccess = (data) => {
             console.log('changeMemberRole success:', data);
         };
-        socket.on('changeMemberRoleError', handleChangeRoleError);
-        socket.on('changeMemberRoleSuccess', handleChangeRoleSuccess);
 
         // Add/remove/delete group feedback handlers
         const handleAddMemberError = (err) => { if (err && err.error) alert(`Add member failed: ${err.error}`); else alert('Add member failed'); };
@@ -280,6 +291,8 @@ export default function Chat() {
         socket.on('removeGroupMemberSuccess', handleRemoveMemberSuccess);
         socket.on('deleteGroupError', handleDeleteGroupError);
         socket.on('deleteGroupSuccess', handleDeleteGroupSuccess);
+        socket.on('changeMemberRoleError', handleChangeRoleError);
+        socket.on('changeMemberRoleSuccess', handleChangeRoleSuccess);
 
         // When the server sends previous messages (merged payload)
         socket.on('previousMessages', (data) => {
@@ -329,15 +342,40 @@ export default function Chat() {
             };
             console.log('Received message:', msgObjRecieved);
             const ac = activeChatRef.current;
-                if (ac && ac.group) {
-                    // Group message handling: compare groupID
-                    if (data.groupID && ac.groupID && data.groupID === ac.groupID) {
-                        setTextMessage((prev) => [...prev, msgObjRecieved]);
-                        // For group messages we do not auto-emit a markAsRead ack here
-                    }
-                } else if (ac && (msgObjRecieved.toEmail === ac.email || msgObjRecieved.fromEmail === ac.email )) {
-                setTextMessage((prev) => [...prev, msgObjRecieved]);
+            if (data.groupID) {
+                // Group message: if this group is active, append to messages, otherwise increment unread
+                if (ac && ac.group && String(ac.groupID) === String(data.groupID)) {
+                    setTextMessage((prev) => [...prev, msgObjRecieved]);
+                    // For group messages we do not auto-emit a markAsRead ack here
+                } else {
+                    // increment unreadCount for that group in conversation list
+                    setVisible(prev => (prev || []).map(item => {
+                        if (item && item.group && String(item.groupID) === String(data.groupID)) {
+                            const current = item.unreadCount || 0;
+                            return { ...item, unreadCount: current + 1 };
+                        }
+                        return item;
+                    }));
+                }
+            } else {
+                // 1-1 message handling
+                if (ac && (msgObjRecieved.toEmail === ac.email || msgObjRecieved.fromEmail === ac.email )) {
+                    setTextMessage((prev) => [...prev, msgObjRecieved]);
                     socketRef.current.emit('markAsRead', { id: msgObjRecieved.id, fromEmail: msgObjRecieved.fromEmail, toEmail: msgObjRecieved.toEmail, toUserId: myUserID, fromUserId: ac.userID  });
+                } else {
+                    // not the active private chat — increment unread on the matching visible item
+                    setVisible(prev => (prev || []).map(item => {
+                        if (!item) return item;
+                        if (!item.group) {
+                            const convoEmail = item.email;
+                            if (convoEmail && (convoEmail === msgObjRecieved.fromEmail || convoEmail === msgObjRecieved.toEmail)) {
+                                const current = item.unreadCount || 0;
+                                return { ...item, unreadCount: current + 1 };
+                            }
+                        }
+                        return item;
+                    }));
+                }
             }
         };
 
@@ -414,6 +452,13 @@ export default function Chat() {
         if (!activeChat || !activeChat.username) return;
         // clear current lists when switching chats
         setTextMessage([]);
+        // clear unread count for the newly active chat in the conversation list
+        setVisible(prev => (prev || []).map(item => {
+            if (!item) return item;
+            if (activeChat.group && item.group && String(item.groupID) === String(activeChat.groupID)) return { ...item, unreadCount: 0 };
+            if (!activeChat.group && item.email && item.email === activeChat.email) return { ...item, unreadCount: 0 };
+            return item;
+        }));
         // request full conversation. If activeChat is a group, include groupID
         const payload = { from: myUserID, fromEmail: myEmail, to: activeChat.userID, toEmail: activeChat.email };
         if (activeChat.group) payload.groupID = activeChat.groupID;
@@ -442,16 +487,37 @@ export default function Chat() {
           textpanel.current.scrollTop = textpanel.current.scrollHeight;
         }
         socketRef.current.on('messageReadAck', (data) => {
-            console.log('Message read acknowledgment received:', data);
-            console.log(data.fromEmail, data.toEmail, activeChatRef.current.email);
-            if (data.fromEmail !== activeChatRef.current.email && data.toEmail !== activeChatRef.current.email) {
-                console.log('Ack does not pertain to active chat, ignoring.');
-                return;
+            try {
+                console.log('Message read acknowledgment received:', data);
+                const ac = activeChatRef.current;
+
+                // Clear unread count for matching conversation(s)
+                setVisible(prev => (prev || []).map(item => {
+                    if (!item) return item;
+                    // Group-level ack
+                    if (data.groupID && item.group && String(item.groupID) === String(data.groupID)) {
+                        return { ...item, unreadCount: 0 };
+                    }
+                    // 1-1 ack: match by email (either side)
+                    const convoEmail = item.email;
+                    if (convoEmail && (convoEmail === data.fromEmail || convoEmail === data.toEmail)) {
+                        return { ...item, unreadCount: 0 };
+                    }
+                    return item;
+                }));
+
+                // If the ack pertains to the active chat, mark loaded messages as read
+                if (ac) {
+                    const isGroupAck = data.groupID && ac.group && String(ac.groupID) === String(data.groupID);
+                    const isPrivateAck = !ac.group && (data.fromEmail === ac.email || data.toEmail === ac.email);
+                    if (isGroupAck || isPrivateAck) {
+                        setTextMessage(prev => (prev || []).map(m => m ? { ...m, read: true } : m));
+                        console.log('Updated messages after read ack for active chat');
+                    }
+                }
+            } catch (err) {
+                console.warn('Error handling messageReadAck:', err);
             }
-            setTextMessage(prev => prev.map(
-                m => m ? { ...m, read: true } : m
-            ))
-            console.log('Updated messages after read ack:', textMessage);
         });
       }, [textMessage]);
 
@@ -737,7 +803,9 @@ export default function Chat() {
                                 </div>
                                 <div className="shrink-0 flex flex-col items-end gap-1">
                                     <p className="text-gray-500 dark:text-gray-400 text-xs font-normal">{u.lastSeen || ''}</p>
-                                    {/*<div className="flex w-6 h-6 items-center justify-center rounded-full bg-[#137fec] text-white text-xs font-bold">{u.unreadCount || ''}</div>*/}
+                                    {u.unreadCount > 0 &&
+                                        <div className="flex w-6 h-6 items-center justify-center rounded-full bg-[#137fec] text-white text-xs font-bold">{u.unreadCount}</div>
+                                    }
                                 </div>
                             </div>
                         ))

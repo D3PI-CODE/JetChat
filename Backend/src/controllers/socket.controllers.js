@@ -7,11 +7,10 @@ import { GroupMemberModel } from '../models/groupMember.model.js';
 import { group, GroupModel } from '../models/Group.model.js';
 import { where } from 'sequelize';
 
-// In-memory typing trackers (ephemeral)
 const groupTypingMap = new Map(); // groupID -> Map<senderKey, { id, username }>
 
 // Broadcast current users and their online status to all connected sockets.
-export const broadcastUserIds = async () => {
+export const broadcastUserIds = async (socket) => {
     try {
         const userModel = new UserModel(messagingDB);
         const allUsers = await userModel.getUserModel().findAll({ raw: true });
@@ -36,6 +35,11 @@ export const broadcastUserIds = async () => {
             avatarUrl: u.avatarUrl || null,
             online: await redisClient.SISMEMBER("user:online", String(u.id)) === 1 ? true : false,
         })));
+
+        userArr.forEach(u => {
+            unreadMessageCount(socket, {receiverID: u.id})
+        })
+
 
         console.log("Broadcasting users (with online status):", userArr);
         io.emit("users", userArr);
@@ -162,8 +166,9 @@ export const connection =  async (socket) => {
     }
 
     // call module-level broadcaster
-    broadcastUserIds();
+    broadcastUserIds(socket);
     broadcastGroups();
+
 
     // Typing indicator handlers
     socket.on('typingStart', async (data) => {
@@ -255,16 +260,12 @@ export const connection =  async (socket) => {
         }
     });
 
-    // Ensure getMessages replies only to the requesting socket
     socket.on("getMessages", (data) => getMessages(socket, data));
 
-    //sends a message to a specific user (by email or DB id)
-    socket.on("sendMessage", sendMessage);
+    socket.on("sendMessage", (data) => sendMessage(socket, data));
 
-    // pass socket through so handler can ack back to the requesting socket
     socket.on("changeProfilePic", (data) => changeProfilePic(socket, data));
 
-    // mark message as read
     socket.on("markAsRead", markAsRead);
 
     socket.on("createGroup", (data) => createGroup(socket, data));
@@ -360,7 +361,7 @@ export const markAsRead = async (data) => {
     }
 };
 
-export const sendMessage = async (data) => {
+export const sendMessage = async (socket, data) => {
     const messageModel = new MessageModel(messagingDB);
     const userModel = new UserModel(messagingDB);
     const sender = data.fromEmail
@@ -427,6 +428,7 @@ export const sendMessage = async (data) => {
                 const room = String(memberId);
                 try {
                     io.to(room).emit('receiveMessage', mappedData);
+                    unreadMessageCount(socket, {receiverID: memberId});
                 } catch (emitErr) {
                     console.warn('Failed to emit receiveMessage to room', room, emitErr && emitErr.message);
                 }
@@ -460,6 +462,8 @@ export const sendMessage = async (data) => {
         }
         const receiverRoom = receiverID ? String(receiverID) : String(receiver);
         io.to(receiverRoom).emit("receiveMessage", mappedData);
+        console.log("receiverRoom:", receiverRoom);
+        unreadMessageCount(socket, {receiverID: receiverRoom});
         console.log("Message emitted to receiver room:", receiverRoom, mappedData);
     }
     // Emit to the sender's room so sender receives canonical message id
@@ -1103,5 +1107,24 @@ const changeGroupAvatar = async (socket, data) => {
         try { socket.emit('changeGroupAvatarError', { error: err && err.message || 'changeGroupAvatar failed' }); } catch (e) {}
     }
 };
+
+const unreadMessageCount = async (socket, data) => {
+    try {
+        const userID = socket.userID
+        const receiverID = data && data.receiverID;
+        if (!userID) {
+            try { socket.emit('unreadMessageCountError', { error: 'Missing userID' }); } catch (e) {}
+            return;
+        }
+        const messageModel = new MessageModel(messagingDB);
+        const count = await messageModel.countUnreadMessages(userID, receiverID);
+        socket.to(userID).to(receiverID).emit('unreadMessageCount', { userID, receiverID, count });
+        console.log(`Unread message count for userID: ${userID}, receiverID: ${receiverID} is ${count}`);
+    } catch (err) {
+        console.error('Error in unreadMessageCount:', err);
+        try { socket.emit('unreadMessageCountError', { error: err && err.message || 'unreadMessageCount failed' }); } catch (e) {}
+    }
+};
+
 
 
