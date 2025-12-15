@@ -391,6 +391,13 @@ export const sendMessage = async (socket, data) => {
         read: false,
         groupID: groupID || null,
     }
+    // Propagate forwarded metadata if provided by the client
+    if (data && data.forwardedFrom) {
+        try {
+            mappedData.forwardedFrom = data.forwardedFrom;
+            mappedData.forwarded = true;
+        } catch (e) { /* ignore */ }
+    }
     console.log("the msg is being sent to", receiverID)
     // Emit to the receiver's user room (prefer DB id, otherwise use email)
     if (groupID) {

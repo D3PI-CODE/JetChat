@@ -1,8 +1,9 @@
 import React from 'react';
 import { RiCheckDoubleLine } from "react-icons/ri";
+import { FiShare2 } from 'react-icons/fi';
 
 
-export default function Textbubble({ messages = [], activeChat = null, users = [], groupMembersMap = {}}) {
+export default function Textbubble({ messages = [], activeChat = null, users = [], groupMembersMap = {}, onForward = () => {} }) {
     if (!Array.isArray(messages) || messages.length === 0) {
         return (
             <div className="flex items-center justify-center text-sm text-gray-500">No messages</div>
@@ -50,12 +51,15 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                         // For sent group messages we do not show the sender name.
                         return (
                             <div key={idx} className="flex items-end gap-3 justify-end">
-                                <div className="flex flex-col gap-1 items-end">
-                                    <div className="rounded-xl rounded-br-none bg-[#0e5555] p-3 text-white max-w-xl shadow-sm">
+                                <div className="flex flex-col gap-1 items-end group relative">
+                                    <div className="rounded-xl rounded-br-none bg-[#0e5555] p-3 text-white max-w-xl shadow-sm relative">
                                         <p className="text-sm">{content}</p>
                                     </div>
                                     <span className="text-xs text-gray-400 dark:text-gray-500 flex gap-2">{ts ? new Date(ts).toLocaleTimeString() : ''} 
-                                        {read ? <RiCheckDoubleLine className="material-symbols-outlined text-sm text-[#137fec]"/> : null} </span> 
+                                        {read ? <RiCheckDoubleLine className="material-symbols-outlined text-sm text-[#137fec]"/> : null} </span>
+                                    <button onClick={() => onForward(m)} title="Forward message" className="absolute -left-8 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-200">
+                                        <FiShare2 />
+                                    </button>
                                 </div>
                             </div>
                         );
@@ -86,12 +90,15 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                         const showName = type !== 'sent' && (!prevSenderKey || String(prevSenderKey) !== String(senderIdKey));
                         return (
                             <div key={idx} className="flex items-start gap-3 max-w-xl">
-                                <div className="flex flex-col gap-1">
+                                <div className="flex flex-col gap-1 relative group">
                                     {showName ? <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">{senderDisplayName}</div> : null}
-                                    <div className="rounded-xl rounded-bl-none bg-white dark:bg-gray-700 p-3 shadow-sm">
+                                    <div className="rounded-xl rounded-bl-none bg-white dark:bg-gray-700 p-3 shadow-sm relative">
                                         <p className="text-sm text-gray-800 dark:text-gray-200">{content}</p>
                                     </div>
                                     <span className="text-xs text-gray-400 dark:text-gray-500">{ts ? new Date(ts).toLocaleTimeString() : ''}</span>
+                                    <button onClick={() => onForward(m)} title="Forward message" className="absolute -right-8 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600">
+                                        <FiShare2 />
+                                    </button>
                                 </div>
                             </div>
                         );
@@ -100,11 +107,14 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                     return (
                         <div key={idx} className="flex items-start gap-3 max-w-xl">
                             <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-8 h-8 shrink-0" style={{backgroundImage: messageAvatar ? `url('${messageAvatar}')` : `url('https://placehold.co/8')`}}></div>
-                            <div className="flex flex-col gap-1">
-                                <div className="rounded-xl rounded-bl-none bg-white dark:bg-gray-700 p-3 shadow-sm">
+                            <div className="flex flex-col gap-1 relative group">
+                                <div className="rounded-xl rounded-bl-none bg-white dark:bg-gray-700 p-3 shadow-sm relative">
                                     <p className="text-sm text-gray-800 dark:text-gray-200">{content}</p>
                                 </div>
                                 <span className="text-xs text-gray-400 dark:text-gray-500">{ts ? new Date(ts).toLocaleTimeString() : ''}</span>
+                                <button onClick={() => onForward(m)} title="Forward message" className="absolute -right-8 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600">
+                                    <FiShare2 />
+                                </button>
                             </div>
                         </div>
                     );

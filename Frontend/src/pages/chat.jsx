@@ -22,6 +22,8 @@ export default function Chat() {
     const textpanel = useRef(null);
     const activeChatRef = useRef(activeChat);
     const [membersList, setMembersList] = useState(false);
+    const [forwardingMessage, setForwardingMessage] = useState(null);
+    const [showForwardModal, setShowForwardModal] = useState(false);
     const [profileImage, setProfileImage] = useState(null);
     const fileInputRef = useRef(null);
     const myEmail = localStorage.getItem('email');
@@ -928,7 +930,54 @@ export default function Chat() {
 
                 <div ref={textpanel} className="flex-1 overflow-y-auto p-6 space-y-6">
                     {/*text messages*/}
-                    <Textbubble messages={filteredMessages} activeChat={activeChat} users={users} groupMembersMap={groupMembersMap}/>
+                    <Textbubble messages={filteredMessages} activeChat={activeChat} users={users} groupMembersMap={groupMembersMap} onForward={(m) => { setForwardingMessage(m); setShowForwardModal(true); }} />
+
+                    {/* Forward modal */}
+                    {showForwardModal && forwardingMessage && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center">
+                            <div className="absolute inset-0 bg-black/50" onClick={() => { setShowForwardModal(false); setForwardingMessage(null); }}></div>
+                            <div className="bg-white dark:bg-[#111818] rounded-lg shadow-lg w-96 p-4 z-60">
+                                <h3 className="text-lg font-semibold text-[#1F2937] dark:text-white mb-2">Forward message</h3>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">Select a conversation to forward this message to:</p>
+                                <div className="max-h-64 overflow-y-auto">
+                                    {(visible || []).filter(v => v && !(v.userID === myUserID)).map(v => (
+                                        <div key={v.userID} className="flex items-center justify-between p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded cursor-pointer" onClick={() => {
+                                            // construct payload and emit
+                                            try {
+                                                const sock = socketRef.current;
+                                                if (!sock) return;
+                                                const payload = {
+                                                    message: forwardingMessage.content || forwardingMessage || '',
+                                                    fromUserId: myUserID,
+                                                    toUserId: v.group ? null : v.userID,
+                                                    groupID: v.group ? v.groupID : null,
+                                                    toEmail: v.group ? null : v.email,
+                                                    fromEmail: myEmail,
+                                                    timestamp: new Date().toISOString(),
+                                                    type: 'sent',
+                                                    forwardedFrom: { id: forwardingMessage.fromUserId || null, email: forwardingMessage.fromEmail || null, name: forwardingMessage.fromUsername || forwardingMessage.fromName || null }
+                                                };
+                                                sock.emit('sendMessage', payload);
+                                            } catch (err) { console.error('Forward failed', err); }
+                                            setShowForwardModal(false);
+                                            setForwardingMessage(null);
+                                        }}>
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-8 h-8" style={{backgroundImage: (v.avatarUrl || v.groupAvatarUrl) ? `url('${v.avatarUrl || v.groupAvatarUrl}')` : `url('https://placehold.co/8')`}}></div>
+                                                <div>
+                                                    <div className="text-sm font-medium text-[#1F2937] dark:text-white">{v.username}</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{v.group ? 'Group' : v.email}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-3 text-right">
+                                    <button className="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded" onClick={() => { setShowForwardModal(false); setForwardingMessage(null); }}>Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* typing indicator */}
