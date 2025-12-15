@@ -4,6 +4,7 @@ import io from 'socket.io-client';
 import Textbubble from './Textbubble';
 import { MdGroupAdd, MdGroupRemove, MdExitToApp, MdOutlineDeleteOutline, MdDriveFileRenameOutline } from "react-icons/md";
 import { SelectValueText } from '@ark-ui/react';
+import { use } from 'react';
 
 export default function Chat() {
     // Theme: use #111818 as the primary panel/background color across the chat UI
@@ -281,6 +282,25 @@ export default function Chat() {
             else alert('Change group avatar failed');
         };
 
+        const handleMention = (data) => {
+            const groupID = data.groupID;
+            const mentionedBy = data.mentionedBy;
+
+            // mark the conversation in the list with a mention badge
+            setVisible(prev => (prev || []).map(item => {
+                if (!item) return item;
+                if (item.group && String(item.groupID) === String(groupID)) {
+                    const ac = activeChatRef.current;
+                    // if this group is currently open, do not show the badge
+                    if (ac && ac.group && String(ac.groupID) === String(groupID)) {
+                        return { ...item, hasMention: false };
+                    }
+                    return { ...item, hasMention: true };
+                }
+                return item;
+            }));
+        }
+
         socket.on('changeGroupAvatarError', handleChangeGroupAvatarError);
         socket.on('changeGroupAvatarSuccess', handleChangeGroupAvatarSuccess);
         socket.on('renameGroupSuccess', handleRenameGroupSuccess);
@@ -293,6 +313,7 @@ export default function Chat() {
         socket.on('deleteGroupSuccess', handleDeleteGroupSuccess);
         socket.on('changeMemberRoleError', handleChangeRoleError);
         socket.on('changeMemberRoleSuccess', handleChangeRoleSuccess);
+        socket.on('mentionedInGroup', handleMention)
 
         // When the server sends previous messages (merged payload)
         socket.on('previousMessages', (data) => {
@@ -455,8 +476,8 @@ export default function Chat() {
         // clear unread count for the newly active chat in the conversation list
         setVisible(prev => (prev || []).map(item => {
             if (!item) return item;
-            if (activeChat.group && item.group && String(item.groupID) === String(activeChat.groupID)) return { ...item, unreadCount: 0 };
-            if (!activeChat.group && item.email && item.email === activeChat.email) return { ...item, unreadCount: 0 };
+            if (activeChat.group && item.group && String(item.groupID) === String(activeChat.groupID)) return { ...item, unreadCount: 0, hasMention: false };
+            if (!activeChat.group && item.email && item.email === activeChat.email) return { ...item, unreadCount: 0, hasMention: false };
             return item;
         }));
         // request full conversation. If activeChat is a group, include groupID
@@ -496,12 +517,12 @@ export default function Chat() {
                     if (!item) return item;
                     // Group-level ack
                     if (data.groupID && item.group && String(item.groupID) === String(data.groupID)) {
-                        return { ...item, unreadCount: 0 };
+                        return { ...item, unreadCount: 0, hasMention: false };
                     }
                     // 1-1 ack: match by email (either side)
                     const convoEmail = item.email;
                     if (convoEmail && (convoEmail === data.fromEmail || convoEmail === data.toEmail)) {
-                        return { ...item, unreadCount: 0 };
+                        return { ...item, unreadCount: 0, hasMention: false };
                     }
                     return item;
                 }));
@@ -541,6 +562,7 @@ export default function Chat() {
             type: 'sent',
         };
         if (socketRef.current) {
+            manageMention();
             socketRef.current.emit('sendMessage', payload);
         }
         // append locally so sender sees their message immediately (use email for matching)
@@ -704,6 +726,25 @@ export default function Chat() {
         }
     }
 
+    const manageMention =() => {
+        if (!activeChat || !activeChat.group) {
+            return;
+        }
+        if(message.split(" ").pop().startsWith("@")) {
+            const mentionText = message.split(" ").pop().substring(1).toLowerCase();
+            const members = groupMembersMap[activeChat.groupID] || [];
+            const filteredMembers = members.filter(m => m.email !== myEmail && (m.username || m.name || '').toLowerCase().includes(mentionText));
+            console.log("Filtered Members: ", filteredMembers);
+            if (filteredMembers.length === 1 && (filteredMembers[0].username || filteredMembers[0].name || '').toLowerCase() === mentionText) {
+                const socket = socketRef.current;
+                if (socket) {
+                    socket.emit('mentionUser', { groupID: activeChat.groupID, mentionedEmail: filteredMembers[0].email, mentionedID: filteredMembers[0].id, fromEmail: myEmail, fromID: myUserID, messageContent: message });
+                }
+            }
+        }
+    }
+
+
     const deleteGroup = () => {
         if (!activeChat || !activeChat.group) {
             alert("No active group selected.");
@@ -803,9 +844,16 @@ export default function Chat() {
                                 </div>
                                 <div className="shrink-0 flex flex-col items-end gap-1">
                                     <p className="text-gray-500 dark:text-gray-400 text-xs font-normal">{u.lastSeen || ''}</p>
-                                    {u.unreadCount > 0 &&
-                                        <div className="flex w-6 h-6 items-center justify-center rounded-full bg-[#137fec] text-white text-xs font-bold">{u.unreadCount}</div>
-                                    }
+                                    {u.unreadCount > 0 ? (
+                                        <div
+                                            title={u.hasMention ? 'Mentioned' : (u.unreadCount + ' unread')}
+                                            className={`flex w-6 h-6 items-center justify-center rounded-full text-white text-xs font-bold ${u.hasMention ? 'bg-red-500' : 'bg-[#137fec]'}`}
+                                        >{u.unreadCount}</div>
+                                    ) : (
+                                        u.hasMention ? (
+                                            <div title="You were mentioned" className="w-3.5 h-3.5 rounded-full bg-red-500 border-2 border-white dark:border-[#0f1720]"></div>
+                                        ) : null
+                                    )}
                                 </div>
                             </div>
                         ))

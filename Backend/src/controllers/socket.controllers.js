@@ -35,12 +35,7 @@ export const broadcastUserIds = async (socket) => {
             avatarUrl: u.avatarUrl || null,
             online: await redisClient.SISMEMBER("user:online", String(u.id)) === 1 ? true : false,
         })));
-
-        userArr.forEach(u => {
-            unreadMessageCount(socket, {receiverID: u.id})
-        })
-
-
+        
         console.log("Broadcasting users (with online status):", userArr);
         io.emit("users", userArr);
     } catch (err) {
@@ -283,6 +278,14 @@ export const connection =  async (socket) => {
     socket.on("renameGroup", (data) => renameGroup(socket, data));
 
     socket.on("changeGroupAvatar", (data) => changeGroupAvatar(socket, data));
+    // Mention user in a group
+    socket.on('mentionUser', (data) => {
+        try {
+            mentionUserInGroup(socket, data);
+        } catch (err) {
+            console.error('Error handling mentionUser event:', err && err.message);
+        }
+    });
     
     
     // When a socket disconnects, broadcast the updated list of user IDs
@@ -1123,6 +1126,31 @@ const unreadMessageCount = async (socket, data) => {
     } catch (err) {
         console.error('Error in unreadMessageCount:', err);
         try { socket.emit('unreadMessageCountError', { error: err && err.message || 'unreadMessageCount failed' }); } catch (e) {}
+    }
+};
+
+const mentionUserInGroup = async (socket, data) => {
+    try {
+        const groupID = data && data.groupID;
+        const mentionedUserID = data && (data.mentionedID || data.mentionedId || data.mentionedUserID);
+        const mentionedEmail = data && (data.mentionedEmail || data.mentioned_email || data.mentioned);
+        if (!groupID || (!mentionedUserID && !mentionedEmail)) {
+            try { socket.emit('mentionUserInGroupError', { error: 'Missing parameters' }); } catch (e) {}
+            return;
+        }
+        const payload = { groupID, mentionedBy: socket.userID || socket.email };
+        // Emit to DB id room if provided
+        if (mentionedUserID) {
+            try { io.to(String(mentionedUserID)).emit('mentionedInGroup', payload); } catch (e) { console.warn('mention emit to id failed', e && e.message); }
+        }
+        // Also emit to email room if provided to cover fallback-auth clients
+        if (mentionedEmail) {
+            try { io.to(String(mentionedEmail)).emit('mentionedInGroup', payload); } catch (e) { console.warn('mention emit to email failed', e && e.message); }
+        }
+        console.log(`Mention emitted for groupID ${groupID} to ${mentionedUserID || mentionedEmail}`);
+    } catch (err) {
+        console.error('Error in mentionUserInGroup:', err);
+        try { socket.emit('mentionUserInGroupError', { error: err && err.message || 'mentionUserInGroup failed' }); } catch (e) {}
     }
 };
 
