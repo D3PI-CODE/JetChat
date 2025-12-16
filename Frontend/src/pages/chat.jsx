@@ -4,7 +4,6 @@ import io from 'socket.io-client';
 import Textbubble from './Textbubble';
 import { MdGroupAdd, MdGroupRemove, MdExitToApp, MdOutlineDeleteOutline, MdDriveFileRenameOutline } from "react-icons/md";
 import { SelectValueText } from '@ark-ui/react';
-import { use } from 'react';
 
 export default function Chat() {
     // Theme: use #111818 as the primary panel/background color across the chat UI
@@ -286,7 +285,6 @@ export default function Chat() {
 
         const handleMention = (data) => {
             const groupID = data.groupID;
-            const mentionedBy = data.mentionedBy;
 
             // mark the conversation in the list with a mention badge
             setVisible(prev => (prev || []).map(item => {
@@ -745,6 +743,8 @@ export default function Chat() {
             }
         }
     }
+
+    
 
 
     const deleteGroup = () => {

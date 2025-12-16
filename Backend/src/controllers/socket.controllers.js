@@ -1,147 +1,51 @@
 import { io, messagingDB } from '../index.js';
 import { MessageModel } from '../models/message.model.js';
 import { UserModel } from '../models/user.model.js';
-import Cloudinary from '../lib/CloudinaryInit.js';
-import redisClient, { redisHSetOrGet } from '../lib/RedisInit.js';
-import { GroupMemberModel } from '../models/groupMember.model.js';
-import { group, GroupModel } from '../models/Group.model.js';
-import { where } from 'sequelize';
+import Cloudinary from '../config/CloudinaryInit.js';
+import { GroupModel } from '../models/Group.model.js';
+import { broadcastUserIds } from '../Services/socket/BroadcastUserIDs.service.js';
+import { broadcastGroups } from '../Services/socket/BroadcastGroups.service.js';
+import { markAsRead } from '../Services/socket/MarkAsRead.service.js';
+import { sendMessage } from '../Services/socket/SendMessage.js';
+import { mentionUserInGroup } from '../Services/socket/mentionUser.js';
 
 const groupTypingMap = new Map(); // groupID -> Map<senderKey, { id, username }>
 
 // Broadcast current users and their online status to all connected sockets.
-export const broadcastUserIds = async (socket) => {
-    try {
-        const userModel = new UserModel(messagingDB);
-        const allUsers = await userModel.getUserModel().findAll({ raw: true });
-        try {
-            await redisClient.del("user:online");
-        } catch (e) {
-            console.warn('Redis DEL user:online failed:', e && e.message);
-        }
-        for (const s of Array.from(io.of("/").sockets.values())) {
-            try {
-                if (s.userID) await redisClient.SADD("user:online", String(s.userID));
-                else if (s.email) await redisClient.SADD("user:online", s.email);
-            } catch (e) {
-                console.warn('Redis SADD failed for user presence:', e && e.message);
-            }
-        }
+// export const broadcastUserIds = async (socket) => {
+//     try {
+//         const userModel = new UserModel(messagingDB);
+//         const allUsers = await userModel.getUserModel().findAll({ raw: true });
+//         try {
+//             await redisClient.del("user:online");
+//         } catch (e) {
+//             console.warn('Redis DEL user:online failed:', e && e.message);
+//         }
+//         for (const s of Array.from(io.of("/").sockets.values())) {
+//             try {
+//                 if (s.userID) await redisClient.SADD("user:online", String(s.userID));
+//                 else if (s.email) await redisClient.SADD("user:online", s.email);
+//             } catch (e) {
+//                 console.warn('Redis SADD failed for user presence:', e && e.message);
+//             }
+//         }
 
-        const userArr = await Promise.all((allUsers || []).map(async u => ({
-            id: u.id,
-            email: u.email,
-            username: u.username ?? u.email,
-            avatarUrl: u.avatarUrl || null,
-            online: await redisClient.SISMEMBER("user:online", String(u.id)) === 1 ? true : false,
-        })));
+//         const userArr = await Promise.all((allUsers || []).map(async u => ({
+//             id: u.id,
+//             email: u.email,
+//             username: u.username ?? u.email,
+//             avatarUrl: u.avatarUrl || null,
+//             online: await redisClient.SISMEMBER("user:online", String(u.id)) === 1 ? true : false,
+//         })));
         
-        console.log("Broadcasting users (with online status):", userArr);
-        io.emit("users", userArr);
-    } catch (err) {
-        console.error('Error broadcasting users:', err);
-    }
-};
+//         console.log("Broadcasting users (with online status):", userArr);
+//         io.emit("users", userArr);
+//     } catch (err) {
+//         console.error('Error broadcasting users:', err);
+//     }
+// };
 
-export const broadcastGroups = async () => {
-    try {
-        const groupModelInstance = new GroupModel(messagingDB);
-        const groupModel = groupModelInstance.getGroupModel();
-        // Build per-member group lists and emit only to those members.
-        const allGroups = await groupModel.findAll({ raw: true });
-        const allMembers = await groupModelInstance.GroupMember.findAll({ raw: true });
-
-        // Fetch users up-front so we can enrich member objects and map id<->email
-        const userModel = new UserModel(messagingDB);
-        const allUsersFull = await userModel.getUserModel().findAll({ raw: true });
-
-        // Map groupid -> group info (we'll add members below)
-        const groupsById = new Map();
-        for (const g of allGroups) {
-            groupsById.set(String(g.groupid), {
-                groupid: g.groupid,
-                groupName: g.groupName,
-                description: g.description,
-                CreatorID: g.CreatorID,
-                // support either column name: `groupAvatar` or `groupAvatarUrl`
-                groupAvatar: g.groupAvatar || g.groupAvatarUrl || null,
-                groupAvatarUrl: g.groupAvatarUrl || g.groupAvatar || null,
-                members: [],
-            });
-        }
-
-        // Aggregate groups per member identifier (memberID can be DB id or email depending on how stored)
-        // Build users map to enrich members with name/email (keyed by both id and email)
-        const usersById = new Map();
-        for (const u of allUsersFull || []) {
-            if (u.id) usersById.set(String(u.id), u);
-            if (u.email) usersById.set(String(u.email), u);
-        }
-
-        // Populate each group's members array and build per-member group lists
-        const memberGroupsMap = new Map();
-        for (const gm of allMembers) {
-            const memberId = gm && (gm.memberID || (typeof gm.getDataValue === 'function' ? gm.getDataValue('memberID') : undefined));
-            const gid = gm && (gm.groupID || (typeof gm.getDataValue === 'function' ? gm.getDataValue('groupID') : undefined));
-            if (!memberId || !gid) continue;
-            const key = String(gid);
-            const ginfo = groupsById.get(String(gid));
-            if (!ginfo) continue;
-
-            // find user info
-            const user = usersById.get(String(memberId)) || usersById.get(String(memberId)) || null;
-            const memberObj = {
-                id: memberId,
-                name: (user && (user.username || user.name)) || null,
-                email: (user && user.email) || null,
-                role: gm.role || null,
-            };
-
-            // add to group's members array (avoid duplicates)
-            if (!ginfo.members.some(m => String(m.id) === String(memberId))) {
-                ginfo.members.push(memberObj);
-            }
-
-            // add group to member's personal groups list
-            const memberKey = String(memberId);
-            if (!memberGroupsMap.has(memberKey)) memberGroupsMap.set(memberKey, []);
-            memberGroupsMap.get(memberKey).push(ginfo);
-        }
-
-        // Build id<->email lookup maps so we can emit to alternate rooms if needed
-        const idToEmail = new Map();
-        const emailToId = new Map();
-        for (const u of allUsersFull || []) {
-            if (u.id) idToEmail.set(String(u.id), u.email);
-            if (u.email) emailToId.set(String(u.email), u.id);
-        }
-
-        // Emit to each member's room(s)
-        for (const [memberKey, groupsArr] of memberGroupsMap.entries()) {
-            try {
-                // Emit to the room matching the stored member identifier
-                io.to(String(memberKey)).emit('groups', groupsArr);
-
-                // If the memberKey is a DB id and we know the email, also emit to email room
-                const mappedEmail = idToEmail.get(String(memberKey));
-                if (mappedEmail) {
-                    io.to(String(mappedEmail)).emit('groups', groupsArr);
-                }
-
-                // If the memberKey is an email and we know the id, also emit to id room
-                const mappedId = emailToId.get(String(memberKey));
-                if (mappedId) {
-                    io.to(String(mappedId)).emit('groups', groupsArr);
-                }
-            } catch (emitErr) {
-                console.error('Error emitting groups to member', memberKey, emitErr && emitErr.message);
-            }
-        }
-        console.log(`broadcastGroups: emitted groups to ${memberGroupsMap.size} member identifiers`);
-    } catch (err) {
-        console.error('Error broadcasting groups:', err);
-    }
-};
+//const broadcastUserIds = broadcastUserIds(socket);
 
 export const connection =  async (socket) => {
     console.log("Socket connected, socket id: " + socket.id + " userID: " + socket.userID);
@@ -316,170 +220,6 @@ export const connection =  async (socket) => {
         } catch (e) {}
         broadcastUserIds();
     });
-};
-
-export const markAsRead = async (data) => {
-    try {
-        const messageModel = new MessageModel(messagingDB);
-        const userModel = new UserModel(messagingDB);
-        const sender = data.fromEmail
-        const receiver = data.toEmail
-        const messageID = data.id;
-        if (!messageID) {
-            console.warn('markAsRead called without message ID');
-            return;
-        }
-        const message = await messageModel.getMessageModel().findOne({ 
-            where: { messageid: messageID },
-            include: userModel.getUserModel(),
-        });
-        if (!message) {
-            console.warn(`markAsRead: message ID ${messageID} not found`);
-            return;
-        }
-        await messageModel.updateReadStatus(messageID, true);
-        console.log(`Message ID ${messageID} marked as read.`);
-        // Notify the sender and receiver rooms (prefer DB ids, fall back to email)
-        try {
-            const senderID = data.fromUserId
-            const receiverID = data.toUserId
-            const payload = {
-                id: messageID,
-                content: message.getDataValue("content"),
-                fromEmail: sender,
-                toEmail: receiver,
-                timestamp: message.getDataValue("createdAt") ?? new Date().toISOString(),
-                type: 'received',
-                read: true,
-            };
-            const senderRoom = senderID ? String(senderID) : String(sender);
-            const receiverRoom = receiverID ? String(receiverID) : String(receiver);
-            io.to(senderRoom).emit('messageReadAck', payload);
-            io.to(receiverRoom).emit('messageReadAck', payload);
-        } catch (emitErr) {
-            console.error('Error emitting messageReadAck to user rooms:', emitErr);
-        }
-    } catch (err) {
-        console.error('Error in markAsRead:', err);
-    }
-};
-
-export const sendMessage = async (socket, data) => {
-    const messageModel = new MessageModel(messagingDB);
-    const userModel = new UserModel(messagingDB);
-    const sender = data.fromEmail
-    const receiver = data.toEmail
-    console.log(sender, receiver)
-    const senderID = data.fromUserId
-    const receiverID = data.toUserId
-    const groupID = data.groupID || null;
-    console.log(senderID, receiverID)
-    console.log("senderID: ", senderID, " receiverID: ", receiverID);
-    // If this is a group message, store groupID and keep receiverID null
-    let message;
-    if (groupID) {
-        message = await messageModel.getMessageModel().create({ senderID, receiverID: null, content: data.message, groupID });
-    } else {
-        message = await messageModel.createMessage(senderID, receiverID, data.message);
-    }
-    let mappedData = {
-        id: message.getDataValue("messageid"),
-        content: message.getDataValue("content"),
-        fromEmail: sender,
-        toEmail: receiver,
-        timestamp: message.getDataValue("createdAt") ?? new Date().toISOString(),
-        read: false,
-        groupID: groupID || null,
-    }
-    // Propagate forwarded metadata if provided by the client
-    if (data && data.forwardedFrom) {
-        try {
-            mappedData.forwardedFrom = data.forwardedFrom;
-            mappedData.forwarded = true;
-        } catch (e) { /* ignore */ }
-    }
-    console.log("the msg is being sent to", receiverID)
-    // Emit to the receiver's user room (prefer DB id, otherwise use email)
-    if (groupID) {
-        // Emit group message only to group members
-        try {
-            const groupModelInstance = new GroupModel(messagingDB);
-            const groupMemberModel = groupModelInstance.GroupMember;
-            const members = await groupMemberModel.findAll({ where: { groupID } });
-            // Attach sender profile info so recipients can render avatar immediately
-            let senderProfile = null;
-            try {
-                if (senderID) senderProfile = await userModel.getUserModel().findOne({ where: { id: senderID }, raw: true });
-                if (!senderProfile && sender) senderProfile = await userModel.getUserModel().findOne({ where: { email: sender }, raw: true });
-            } catch (profErr) {
-                console.warn('Could not load sender profile for message:', profErr && profErr.message);
-            }
-            if (senderProfile) {
-                mappedData.fromUserId = senderProfile.id || senderID || null;
-                mappedData.fromAvatar = senderProfile.avatarUrl || null;
-                mappedData.fromName = senderProfile.username || senderProfile.email || null;
-                mappedData.fromUsername = senderProfile.username || null;
-                mappedData.username = senderProfile.username || senderProfile.email || null;
-            } else {
-                mappedData.fromUserId = senderID || null;
-                mappedData.fromAvatar = null;
-                mappedData.fromName = sender || null;
-                mappedData.fromUsername = null;
-                mappedData.username = sender || null;
-            }
-
-            for (const m of members) {
-                const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
-                if (!memberId) continue;
-                // don't send the group 'receiveMessage' to the sender — sender will get a 'sentMessage'
-                if (senderID && String(memberId) === String(senderID)) continue;
-                if (sender && String(memberId) === String(sender)) continue;
-
-                const room = String(memberId);
-                try {
-                    io.to(room).emit('receiveMessage', mappedData);
-                    unreadMessageCount(socket, {receiverID: memberId});
-                } catch (emitErr) {
-                    console.warn('Failed to emit receiveMessage to room', room, emitErr && emitErr.message);
-                }
-            }
-            console.log("Message emitted to group members:", groupID, mappedData);
-        } catch (groupErr) {
-            console.error('Failed to emit group message to members, falling back to broadcast:', groupErr);
-            io.emit('receiveMessage', mappedData);
-        }
-    } else {
-        // Attach sender profile for 1-1 message so recipient can render avatar
-        try {
-            let senderProfile = null;
-            if (senderID) senderProfile = await userModel.getUserModel().findOne({ where: { id: senderID }, raw: true });
-            if (!senderProfile && sender) senderProfile = await userModel.getUserModel().findOne({ where: { email: sender }, raw: true });
-            if (senderProfile) {
-                mappedData.fromUserId = senderProfile.id || senderID || null;
-                mappedData.fromAvatar = senderProfile.avatarUrl || null;
-                mappedData.fromName = senderProfile.username || senderProfile.email || null;
-                mappedData.fromUsername = senderProfile.username || null;
-                mappedData.username = senderProfile.username || senderProfile.email || null;
-            } else {
-                mappedData.fromUserId = senderID || null;
-                mappedData.fromAvatar = null;
-                mappedData.fromName = sender || null;
-                mappedData.fromUsername = null;
-                mappedData.username = sender || null;
-            }
-        } catch (profErr) {
-            console.warn('Could not load sender profile for 1-1 message:', profErr && profErr.message);
-        }
-        const receiverRoom = receiverID ? String(receiverID) : String(receiver);
-        io.to(receiverRoom).emit("receiveMessage", mappedData);
-        console.log("receiverRoom:", receiverRoom);
-        unreadMessageCount(socket, {receiverID: receiverRoom});
-        console.log("Message emitted to receiver room:", receiverRoom, mappedData);
-    }
-    // Emit to the sender's room so sender receives canonical message id
-    const senderRoom = senderID ? String(senderID) : String(sender);
-    io.to(senderRoom).emit("sentMessage", mappedData);
-    console.log(mappedData);
 };
 
 export const getMessages = async (socket, data) => {
@@ -1118,48 +858,7 @@ const changeGroupAvatar = async (socket, data) => {
     }
 };
 
-const unreadMessageCount = async (socket, data) => {
-    try {
-        const userID = socket.userID
-        const receiverID = data && data.receiverID;
-        if (!userID) {
-            try { socket.emit('unreadMessageCountError', { error: 'Missing userID' }); } catch (e) {}
-            return;
-        }
-        const messageModel = new MessageModel(messagingDB);
-        const count = await messageModel.countUnreadMessages(userID, receiverID);
-        socket.to(userID).to(receiverID).emit('unreadMessageCount', { userID, receiverID, count });
-        console.log(`Unread message count for userID: ${userID}, receiverID: ${receiverID} is ${count}`);
-    } catch (err) {
-        console.error('Error in unreadMessageCount:', err);
-        try { socket.emit('unreadMessageCountError', { error: err && err.message || 'unreadMessageCount failed' }); } catch (e) {}
-    }
-};
 
-const mentionUserInGroup = async (socket, data) => {
-    try {
-        const groupID = data && data.groupID;
-        const mentionedUserID = data && (data.mentionedID || data.mentionedId || data.mentionedUserID);
-        const mentionedEmail = data && (data.mentionedEmail || data.mentioned_email || data.mentioned);
-        if (!groupID || (!mentionedUserID && !mentionedEmail)) {
-            try { socket.emit('mentionUserInGroupError', { error: 'Missing parameters' }); } catch (e) {}
-            return;
-        }
-        const payload = { groupID, mentionedBy: socket.userID || socket.email };
-        // Emit to DB id room if provided
-        if (mentionedUserID) {
-            try { io.to(String(mentionedUserID)).emit('mentionedInGroup', payload); } catch (e) { console.warn('mention emit to id failed', e && e.message); }
-        }
-        // Also emit to email room if provided to cover fallback-auth clients
-        if (mentionedEmail) {
-            try { io.to(String(mentionedEmail)).emit('mentionedInGroup', payload); } catch (e) { console.warn('mention emit to email failed', e && e.message); }
-        }
-        console.log(`Mention emitted for groupID ${groupID} to ${mentionedUserID || mentionedEmail}`);
-    } catch (err) {
-        console.error('Error in mentionUserInGroup:', err);
-        try { socket.emit('mentionUserInGroupError', { error: err && err.message || 'mentionUserInGroup failed' }); } catch (e) {}
-    }
-};
 
 
 

@@ -4,7 +4,7 @@ import { credentialsDB, messagingDB } from '../index.js';
 import { UserAuth, UserAuthModel } from '../models/userAuth.model.js';
 import { User, UserModel } from '../models/user.model.js';
 import jwt from 'jsonwebtoken';
-import redisClient, {redisSetOrGet } from '../lib/RedisInit.js';
+import redisClient, {redisSetOrGet } from '../config/RedisInit.js';
 
 export const login = async (req, res) => {
     const { email, password } = req.body;
