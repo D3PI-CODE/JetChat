@@ -1,5 +1,6 @@
-import { io, messagingDB } from '../../index.js';
+import { messagingDB } from '../../index.js';
 import { MessageModel } from '../../models/message.model.js';
+import { UserModel } from '../../models/user.model.js';
 
 export const getMessagesService = async (userDTO) => {
     const messageModel = new MessageModel(messagingDB);

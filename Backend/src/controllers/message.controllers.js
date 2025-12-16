@@ -2,6 +2,9 @@ import { io } from '../index.js';
 import { getMessagesService } from '../Services/messaging/getMessage.service.js';
 import { createGroupService } from '../Services/messaging/createGroup.service.js';
 import { broadcastGroups } from '../Services/socket/BroadcastGroups.service.js';
+import { deleteGroupService } from '../Services/messaging/deleteGroup.service.js';
+import { renameGroupService } from '../Services/messaging/renameGroup.service.js';
+import { addGroupMemberService } from '../Services/messaging/addGroupMember.service.js';
 
 export const getMessages = async (req, res) => {
     try {
@@ -51,5 +54,98 @@ export const createGroup = async (req, res) => {
     } catch (err) {
         console.error('Error in createGroup:', err);
         res.status(500).json({ error: err && err.message || 'createGroup failed' });
+    }
+};
+
+export const deleteGroup = async (req, res) => {
+    try {
+        const groupDTO = { ... req.body }
+        const groupID = groupDTO.groupID;
+        const requesterId = groupDTO.requesterId;
+
+        if (!groupID && !requesterId) {
+            return res.status(400).json({ error: 'Missing groupID or requesterId' });
+        }
+        const deleteResult = await deleteGroupService(groupDTO);
+
+        if (deleteResult.error) {
+            return res.status(403).json({ error: deleteResult.error });
+        } else {
+            res.json({ message: `Group with ID ${groupID} deleted successfully.` });
+            console.log(`Group with ID ${groupID} deleted by requesterId ${requesterId}`);
+        }
+
+        try { 
+            await broadcastGroups(); 
+        } catch (bErr) { 
+            res.status(500).json({ error: 'Group deleted but broadcasting failed: ' + (bErr && bErr.message) }); 
+            return;
+        }
+
+    } catch (err) {
+        console.error('Error in deleteGroup:', err);
+        res.status(500).json({ error: err && err.message || 'deleteGroup failed' });
+    }
+};
+
+export const renameGroup = async (req, res) => {
+    try {
+        const groupDTO = { ... req.body }
+        const groupID = groupDTO.groupID;
+        const newName = groupDTO.newGroupName;
+        
+        if (!groupID || !newName) {
+            res.status(400).json({ error: 'Missing groupID or newGroupName' });
+            return;
+        }
+        const renameResult = await renameGroupService(groupDTO);
+
+        if (renameResult.error) {
+            return res.status(403).json({ error: renameResult.error });
+        } else {
+            res.json({ message: `Group with ID ${groupID} renamed successfully to ${newName}.` });
+            console.log(`Group with ID ${groupID} renamed to ${newName}`);
+        }
+
+        try {
+            await broadcastGroups();
+        } catch (broadcastErr) {
+            return res.status(500).json({ error: 'Group renamed but broadcasting failed: ' + (broadcastErr && broadcastErr.message) });
+        }
+        
+    } catch (err) {
+        console.error('Error in renameGroup:', err);
+        res.status(500).json({ error: err && err.message || 'renameGroup failed' });
+    }
+};
+
+export const addGroupMember = async (req, res) => {
+    try {
+        const groupDTO = { ... req.body }
+        const groupID = groupDTO.groupID;
+        const memberID = groupDTO.memberID;
+
+        if (!groupID || !memberID) {
+            return res.status(400).json({ error: 'Missing parameters' });
+        }
+
+        const addMemberResult = await addGroupMemberService(groupDTO);
+
+        if (addMemberResult && addMemberResult.error) {
+            return res.status(403).json({ error: addMemberResult.error });
+        } else {
+            res.json({ message: `Member with ID ${memberID} added to group ${groupID} successfully.` });
+            console.log(`Member with ID ${memberID} added to group ${groupID}`);
+        }
+
+        try { 
+            await broadcastGroups(); 
+        } catch (bErr) {
+            return res.status(500).json({ error: 'Member added but broadcasting failed: ' + (bErr && bErr.message) }); 
+        }
+
+    } catch (err) {
+        console.error('Error in addtoGroup:', err);
+        res.status(500).json({ error: err && err.message || 'addtoGroup failed' });
     }
 };
