@@ -26,11 +26,10 @@ export const addGroupMemberService = async (groupDTO) => {
         }
 
         const created = await groupMemberModel.create({ groupID: groupID, memberID: memberID, role: 'member' });
+        return { success: true, member: created };
     } catch (dbErr) {
         console.error('Failed to add group member in DB:', dbErr);
         return { error: 'Failed to add member', details: dbErr.message };
     }
-    
-    return { success: true, member: created };
 
 };

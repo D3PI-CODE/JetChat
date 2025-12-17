@@ -482,34 +482,6 @@ export const changeProfilePic = async (socket, data) => {
     }
 }
 
-const createGroup = async (socket, data) => {
-    try {
-        const groupName = data && data.groupName;
-        // Prefer authenticated socket.userID as creator when available
-        const createdBy = (data && data.createdBy) || socket.userID || socket.email;
-
-        console.log(`Creating group: ${groupName} by userID: ${createdBy}`);
-        const groupModelInstance = new GroupModel(messagingDB);
-        const groupModel = groupModelInstance.getGroupModel();
-        const groupMemberModel = groupModelInstance.GroupMember;
-
-        const newGroup = await groupModelInstance.createGroup(groupName, '', createdBy);
-        io.emit("newGroupCreated", { groupName, createdBy, groupID: newGroup.groupid });
-        console.log(`Group created successfully: ${groupName} (ID: ${newGroup.groupid})`);
-
-        // Broadcast updated group list to all connected clients
-        try {
-            await broadcastGroups();
-        } catch (broadcastErr) {
-            console.warn('Failed to broadcast groups after creation:', broadcastErr && broadcastErr.message);
-        }
-
-    } catch (err) {
-        console.error('Error in createGroup:', err);
-        try { socket.emit('createGroupError', { error: err && err.message || 'createGroup failed' }); } catch (e) {}
-    }
-};
-
 const addtoGroup = async (socket, data) => {
     try {
         const groupID = data && data.groupID;

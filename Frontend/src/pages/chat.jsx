@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
 import './chat.css';
-import io from 'socket.io-client';
+import useChatSocket from '../hooks/useChatSocket';
 import Textbubble from './Textbubble';
 import { MdGroupAdd, MdGroupRemove, MdExitToApp, MdOutlineDeleteOutline, MdDriveFileRenameOutline } from "react-icons/md";
+import { IoIosClose } from "react-icons/io";
 import { SelectValueText } from '@ark-ui/react';
+import { createGroupApi, addGroupMemberApi } from '@/Services/api';
 
 export default function Chat() {
     // Theme: use #111818 as the primary panel/background color across the chat UI
@@ -13,23 +15,29 @@ export default function Chat() {
     const [users, setUsers] = useState([]);
     const [groupMembersMap, setGroupMembersMap] = useState({});
     const [typingMap, setTypingMap] = useState({}); // key -> array of {id, username}
-    const socketRef = useRef(null);
+    
     const typingTimeoutRef = useRef(null);
     const isTypingRef = useRef(false);
     const [visible, setVisible] = useState(users.filter((u) => !u.self));
     const [activeChat, setActiveChat] = useState(null);
     const textpanel = useRef(null);
     const activeChatRef = useRef(activeChat);
+    // UI state
     const [membersList, setMembersList] = useState(false);
+    const [showAddMembersModal, setShowAddMembersModal] = useState(false);
+    const [selectedToAdd, setSelectedToAdd] = useState([]);
+    const [openRoleDropdownFor, setOpenRoleDropdownFor] = useState(null);
+    const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
+    const [newGroupName, setNewGroupName] = useState('');
     const [forwardingMessage, setForwardingMessage] = useState(null);
     const [showForwardModal, setShowForwardModal] = useState(false);
     const [profileImage, setProfileImage] = useState(null);
     const fileInputRef = useRef(null);
     const myEmail = localStorage.getItem('email');
     const myUserID = localStorage.getItem('userId');
-    // Resolve a usable userID for socket auth. If no explicit userId is present
-    // fall back to the email so the server still receives an identifier.
     const resolvedUserID = myUserID || myEmail || null;
+    const token = localStorage.getItem('token');
+    const socketRef = useChatSocket({ token, userID: resolvedUserID, email: myEmail });
 
     const LogOut = () => {
         localStorage.removeItem('token');
@@ -61,31 +69,6 @@ export default function Chat() {
     }, [activeChat]);
 
     useEffect(() => {
-        if (!socketRef.current) {
-            console.log('Connecting socket for email:', myEmail);
-            socketRef.current = io('http://localhost:5002', { autoConnect: false });
-            // Attach auth for the socket handshake. Prefer JWT token for server
-            // authentication; fall back to userId/email so older flows still work.
-            const token = localStorage.getItem('token');
-            if (!token) {
-                console.warn('No `token` found in localStorage; socket will use fallback auth (userId/email).');
-            }
-            socketRef.current.auth = { token, userID: resolvedUserID, email: myEmail };
-            console.log('Socket auth before connect:', socketRef.current.auth);
-            socketRef.current.connect();
-
-            // helpful debug handlers
-            socketRef.current.on('connect_error', (err) => {
-                console.error('Socket connect_error:', err);
-            });
-            socketRef.current.on('connect_timeout', (timeout) => {
-                console.warn('Socket connect_timeout:', timeout);
-            });
-            socketRef.current.on('error', (err) => {
-                console.error('Socket error:', err);
-            });
-        }
-        
         const socket = socketRef.current;
         const usrMangement = (usersList) => {
             const processed = (usersList || []).map((user) => ({
@@ -492,7 +475,7 @@ export default function Chat() {
     useEffect(() => {
         return () => {
             try {
-                const sock = socketRef.current;
+                const sock = socketRef;
                 const ac = activeChatRef.current;
                 if (sock && ac) {
                     const payload = ac.group ? { groupID: ac.groupID, fromUserId: myUserID, fromEmail: myEmail, fromUsername: users.find(u=>u.email===myEmail)?.username || myEmail } : { toUserId: ac.userID, toEmail: ac.email, fromUserId: myUserID, fromEmail: myEmail, fromUsername: users.find(u=>u.email===myEmail)?.username || myEmail };
@@ -540,6 +523,8 @@ export default function Chat() {
                 console.warn('Error handling messageReadAck:', err);
             }
         });
+        
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [textMessage]);
 
 
@@ -589,34 +574,98 @@ export default function Chat() {
         } catch (err) { console.warn('handleTypingLocal error', err); }
     };
 
-    const createGroup = () => {
-        const groupName = prompt("Enter group name:");
-        if (!groupName) return;
-        const socket = socketRef.current;
-        if (socket) {
-            socket.emit('createGroup', { groupName, createdBy: myUserID, createdByEmail: myEmail });
+    const createGroupSubmit = async (e) => {
+        e && e.preventDefault && e.preventDefault();
+        const groupName = (newGroupName || '').trim();
+        if (!groupName) return alert('Please enter a group name');
+        try {
+            const data = await createGroupApi({ groupName, createdBy: myUserID, token });
+            if (data && data.groupID) {
+                alert(`Group "${groupName}" created successfully.`);
+                setShowCreateGroupModal(false);
+                setNewGroupName('');
+            } else {
+                alert('Failed to create group.');
+            }
+        } catch (err) {
+            console.error('Create group failed:', err);
+            alert('Create group failed: ' + (err?.response?.data?.error || err.message));
         }
     };
 
-    const addMember = () => {
-        const memberEmail = prompt("Enter the email of the user to add to the group:");
-        let memberID = ""
-        users.forEach(u => { 
-            if (memberEmail === u.email) {
-                console.log(u.userID);
-                memberID = u.userID;
-            } 
+    const addMember = async () => {
+        try {
+            const memberEmail = prompt("Enter the email of the user to add to the group:");
+            if (!memberEmail) return;
+            let memberID = "";
+            users.forEach(u => { if (memberEmail === u.email) memberID = u.userID; });
+            if (!activeChat || !activeChat.group) { alert("No active group selected."); return; }
+
+            const payload = {
+                groupID: activeChat.groupID,
+                memberEmail,
+                memberID,
+                requesterID: myUserID // backend service expects requesterID in body
+            };
+
+            const data = await addGroupMemberApi({ groupID: payload.groupID, memberEmail: payload.memberEmail, memberID: payload.memberID, requesterID: payload.requesterID, token });
+            if (data && data.error) {
+                alert("Error adding member: " + data.error);
+            } else {
+                alert('Member added successfully');
+            }
+        } catch (err) {
+            console.error('addMember request failed:', err);
+            alert('Add member failed: ' + (err?.response?.data?.error || err.message));
+        }
+    };
+
+    const handleInlineRemove = (member) => {
+        if (!member) return;
+        if (!activeChat || !activeChat.group) { alert('No active group selected.'); return; }
+        if (!isAdmin) { alert('Only admins/owners can remove members.'); return; }
+        const memberEmail = member.email;
+        const memberID = member.id || users.find(u => u.email === member.email)?.userID || '';
+        const sock = socketRef.current;
+        if (sock) {
+            sock.emit('removeGroupMember', { groupID: activeChat.groupID, memberEmail, memberID });
+        }
+    };
+
+    const toggleSelectToAdd = (email) => {
+        setSelectedToAdd(prev => {
+            const next = new Set(prev);
+            if (next.has(email)) next.delete(email); else next.add(email);
+            return Array.from(next);
         });
-        console.log("MemberID: ", memberID);
-        if (!memberEmail) return;
-        if (!activeChat || !activeChat.group) {
-            alert("No active group selected.");
-            return;
+    };
+
+    const selectAllCandidates = (candidates) => {
+        setSelectedToAdd(candidates.map(c => c.email));
+    };
+
+    const addSelectedMembersSubmit = async () => {
+        if (!activeChat || !activeChat.group) { alert('No active group selected.'); return; }
+        if (!selectedToAdd || selectedToAdd.length === 0) { alert('No users selected.'); return; }
+        const results = await Promise.allSettled(selectedToAdd.map(async (email) => {
+            const user = users.find(u => u.email === email);
+            const memberID = user ? (user.userID || user.id) : '';
+            try {
+                const res = await addGroupMemberApi({ groupID: activeChat.groupID, memberEmail: email, memberID, requesterID: myUserID, token });
+                return { email, ok: true, res };
+            } catch (err) {
+                return { email, ok: false, err };
+            }
+        }));
+        const failed = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok));
+        const succeeded = results.filter(r => r.status === 'fulfilled' && r.value && r.value.ok);
+        if (failed.length > 0) {
+            alert(`Added ${succeeded.length} members, ${failed.length} failed.`);
+        } else {
+            alert(`Successfully added ${succeeded.length} members.`);
         }
-        const socket = socketRef.current;
-        if (socket) {
-            socket.emit('addGroupMember', { groupID: activeChat.groupID, memberEmail, memberID: memberID });
-        }
+        setShowAddMembersModal(false);
+        setSelectedToAdd([]);
     };
 
     const removeMember = () => {
@@ -670,6 +719,26 @@ export default function Chat() {
             socket.emit('changeMemberRole', { groupID: activeChat.groupID, memberEmail: member.email, memberID: memberID, newRole: role });
         }
     }
+
+    // Close open role dropdown when clicking outside
+    useEffect(() => {
+        const handler = (e) => {
+            if (!openRoleDropdownFor) return;
+            try {
+                const el = document.querySelector(`[data-role-for="${openRoleDropdownFor}"]`);
+                if (!el) { setOpenRoleDropdownFor(null); return; }
+                if (!el.contains(e.target)) setOpenRoleDropdownFor(null);
+            } catch (err) {
+                setOpenRoleDropdownFor(null);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        document.addEventListener('touchstart', handler);
+        return () => {
+            document.removeEventListener('mousedown', handler);
+            document.removeEventListener('touchstart', handler);
+        };
+    }, [openRoleDropdownFor]);
 
     const changeGroupAvatar = () => {
         const memberEmail = myEmail;
@@ -802,7 +871,7 @@ export default function Chat() {
                         <div onClick={imageUploader} className="profilePic flex items-center justify-center bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12" style={{backgroundImage: profileImage ? `url('${profileImage}')` : `url('https://placehold.co/12')`}}></div>
                         <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageChange} />
                     </div>
-                    <button onClick={createGroup} className="flex items-center justify-center rounded-lg p-3 text-gray-300 hover:bg-white/5">
+                        <button onClick={() => setShowCreateGroupModal(true)} className="flex items-center justify-center rounded-lg p-3 text-gray-300 hover:bg-white/5">
                             <MdGroupAdd size={24} />
                     </button>
                 </div>
@@ -873,57 +942,7 @@ export default function Chat() {
                         <div className="relative flex flex-col">
                             <h2 onClick = {() => setMembersList(true)} className="text-lg font-semibold text-[#1F2937] dark:text-white">{activeChat?.username ?? 'Select a chat'}</h2>
                             <p className={`text-sm ${activeChat?.online ? 'text-green-500' : 'text-gray-400'}`}>{activeChat ? (activeChat.online ? 'Online' : 'Offline') : ''}</p>
-                            {membersList && groupMembersMap[activeChat?.groupID] && (
-                                <div className="absolute w-md top-16 bg-white dark:bg-[#111818] border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg p-4 z-10">
-                                    <h3 className="text-md font-semibold mb-1 text-[#1F2937] dark:text-white">Group Members</h3>
-                                    <div className='flex gap-2 pb-2 mb-4 border-b border-gray-300 dark:border-gray-700'>
-                                        {isMember && (
-                                            <button onClick={addMember} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm"><MdGroupAdd/></button>
-                                        )}
-                                        {isAdmin && (
-                                            <div className='flex gap-2'>
-                                                <button onClick={renameGroup} className="mt-2 px-3 py-1 bg-[#828282] text-white rounded-md text-sm"><MdDriveFileRenameOutline/></button>
-                                                <button onClick={removeMember} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdGroupRemove/></button>
-                                            </div>
-                                        )}
-                                        {isOwner && (
-                                            <button onClick={deleteGroup} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdOutlineDeleteOutline/></button>
-                                        )}
-                                    </div>
-                                        <ul className="max-h-60 overflow-y-auto">
-                                        {(groupMembersMap[activeChat?.groupID] || []).map((m) => (
-                                            <li key={m.id || m.email} className="text-sm text-[#1F2937] dark:text-white mb-1 flex justify-between items-center">
-                                                <div>
-                                                    <div className="font-medium">{m.name || m.email}</div>
-                                                    <div className="text-xs text-gray-500">{m.email}</div>
-                                                </div>
-                                                <div>
-                                                    {m.role === 'owner' ? (
-                                                        <div className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">owner</div>
-                                                    ) : (
-                                                        <select
-                                                            value={(m.role || 'member')}
-                                                            disabled={!isAdmin || ((m.id && String(m.id) === String(myUserID)) || (m.email === myEmail))}
-                                                            onChange={(e) => handleRoleChange(m, e.target.value)}
-                                                            className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700"
-                                                        >
-                                                            <option value="admin">admin</option>
-                                                            <option value="member">member</option>
-                                                        </select>
-                                                    )}
-                                                </div>
-                                            </li>
-                                        ))}
-                                        {(!groupMembersMap[activeChat?.groupID] || groupMembersMap[activeChat?.groupID].length === 0) && (
-                                            <li className="text-sm text-[#1F2937] dark:text-white mb-1">No members</li>
-                                        )}
-                                    </ul>
-                                    <div className='flex gap-2 justify-end'>
-                                        <button onClick={() => setMembersList(false)} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm">Close</button>
-                                        <button onClick={leaveGroup} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdExitToApp /></button>
-                                    </div>
-                                </div>
-                            )}
+                            {/* membersList modal now rendered as overlay below (improves positioning and backdrop handling) */}
                         </div>
                     </div>
                 </header>
@@ -976,6 +995,146 @@ export default function Chat() {
                                     <button className="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded" onClick={() => { setShowForwardModal(false); setForwardingMessage(null); }}>Cancel</button>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {/* Members List Modal (overlay) */}
+                    {membersList && activeChat.groupID && (groupMembersMap[activeChat?.groupID] || []).length >= 0 && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center">
+                            <div className="absolute inset-0 bg-black/50" onClick={() => setMembersList(false)}></div>
+                            <div className="bg-white dark:bg-[#111818] rounded-lg shadow-lg w-96 max-w-lg p-4 z-60">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="text-md font-semibold text-[#1F2937] dark:text-white">Group Members</h3>
+                                    <button onClick={() => setMembersList(false)} className="text-gray-500 hover:text-gray-700"><IoIosClose size={32}/></button>
+                                </div>
+                                <div className='flex gap-2 pb-2 mb-4 border-b border-gray-300 dark:border-gray-700'>
+                                    {isMember && (
+                                        <button onClick={() => setShowAddMembersModal(true)} className="mt-2 px-3 py-1 bg-[#137fec] text-white rounded-md text-sm"><MdGroupAdd/></button>
+                                    )}
+                                    {isAdmin && (
+                                        <div className='flex gap-2'>
+                                            <button onClick={renameGroup} className="mt-2 px-3 py-1 bg-[#828282] text-white rounded-md text-sm"><MdDriveFileRenameOutline/></button>
+                                        </div>
+                                    )}
+                                    {isOwner && (
+                                        <button onClick={deleteGroup} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdOutlineDeleteOutline/></button>
+                                    )}
+                                </div>
+                                <ul className={`max-h-60 ${openRoleDropdownFor ? 'overflow-visible' : 'overflow-y-auto'}`}>
+                                {(groupMembersMap[activeChat?.groupID] || []).map((m) => {
+                                    const canRemove = (
+                                        (isOwner && m.email !== myEmail && m.role !== 'owner') ||
+                                        (isAdmin && !isOwner && m.email !== myEmail && (m.role === 'member' || !m.role))
+                                    );
+                                    return (
+                                    <li key={m.id || m.email} className="group relative text-sm text-[#1F2937] dark:text-white mb-1 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-2">
+                                        <div>
+                                            <div className="font-medium">{m.name || m.email}</div>
+                                            <div className="text-xs text-gray-500">{m.email}</div>
+                                        </div>
+                                        <div className="flex items-center gap-2 relative">
+                                            <div className={`transform transition-transform duration-150 ${canRemove ? 'group-hover:-translate-x-14' : ''}`}>
+                                                {m.role === 'owner' ? (
+                                                    <div className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">owner</div>
+                                                ) : (
+                                                    <div className="relative inline-block" data-role-for={m.email}>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); const disabled = !isAdmin || ((m.id && String(m.id) === String(myUserID)) || (m.email === myEmail)); if (disabled) return; setOpenRoleDropdownFor(openRoleDropdownFor === m.email ? null : m.email); }}
+                                                            className={(() => {
+                                                                const disabled = !isAdmin || ((m.id && String(m.id) === String(myUserID)) || (m.email === myEmail));
+                                                                return `text-xs px-3 py-1 rounded ${disabled ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-[#137fec] text-white hover:bg-[#0f6fe6]'} `;
+                                                            })()}
+                                                        >
+                                                            {m.role || 'member'}
+                                                        </button>
+
+                                                        {openRoleDropdownFor === m.email && (
+                                                            <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-[#111818] rounded shadow-lg z-50 ring-1 ring-black/5">
+                                                                <div className="py-1">
+                                                                    <button onClick={(e) => { e.stopPropagation(); handleRoleChange(m, 'admin'); setOpenRoleDropdownFor(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">admin</button>
+                                                                    <button onClick={(e) => { e.stopPropagation(); handleRoleChange(m, 'member'); setOpenRoleDropdownFor(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">member</button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {canRemove && (
+                                                <button onClick={() => handleInlineRemove(m)} className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-sm text-white bg-red-500 px-2 py-1 rounded pointer-events-none group-hover:pointer-events-auto">
+                                                    <MdGroupRemove />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </li>
+                                    );
+                                })}
+                                {(!groupMembersMap[activeChat?.groupID] || groupMembersMap[activeChat?.groupID].length === 0) && (
+                                    <li className="text-sm text-[#1F2937] dark:text-white mb-1">No members</li>
+                                )}
+                                </ul>
+                                <div className='flex gap-2 justify-end mt-3'>
+                                    <button onClick={leaveGroup} className="mt-2 px-3 py-1 bg-[#fc6060] text-white rounded-md text-sm"><MdExitToApp /></button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Add Members Modal (multi-select) */}
+                    {showAddMembersModal && activeChat && activeChat.group && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center">
+                            <div className="absolute inset-0 bg-black/50" onClick={() => { setShowAddMembersModal(false); setSelectedToAdd([]); }}></div>
+                            <div className="bg-white dark:bg-[#111818] rounded-lg shadow-lg w-96 p-4 z-60">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h3 className="text-md font-semibold text-[#1F2937] dark:text-white">Add Members</h3>
+                                    <button onClick={() => { setShowAddMembersModal(false); setSelectedToAdd([]); }} className="text-gray-500 hover:text-gray-700"><IoIosClose size={28}/></button>
+                                </div>
+                                <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">Select users to add to <strong className="text-[#1F2937] dark:text-white">{activeChat.username}</strong></p>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <button onClick={() => {
+                                        const members = groupMembersMap[activeChat.groupID] || [];
+                                        const candidates = (users || []).filter(u => u && !u.group && u.email !== myEmail && !members.find(m => m.email === u.email));
+                                        selectAllCandidates(candidates);
+                                    }} className="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded text-sm">Select All</button>
+                                    <div className="text-sm text-gray-500">{selectedToAdd.length} selected</div>
+                                </div>
+                                <div className="max-h-64 overflow-y-auto border-t border-b border-gray-200 dark:border-gray-700 py-2">
+                                    {((users || []).filter(u => u && !u.group && u.email !== myEmail && !((groupMembersMap[activeChat.groupID] || []).find(m=>m.email===u.email)))).map(u => (
+                                        <div key={u.email} className="flex items-center justify-between p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded cursor-pointer" onClick={() => toggleSelectToAdd(u.email)}>
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-8 h-8" style={{backgroundImage: u.avatarUrl ? `url('${u.avatarUrl}')` : `url('https://placehold.co/8')`}}></div>
+                                                <div>
+                                                    <div className="text-sm font-medium text-[#1F2937] dark:text-white">{u.username}</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{u.email}</div>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <input type="checkbox" checked={selectedToAdd.includes(u.email)} readOnly />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-3 text-right flex gap-2 justify-end">
+                                    <button className="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded" onClick={() => { setShowAddMembersModal(false); setSelectedToAdd([]); }}>Cancel</button>
+                                    <button className="px-3 py-1 bg-[#137fec] text-white rounded" onClick={addSelectedMembersSubmit}>Add {selectedToAdd.length > 0 ? `(${selectedToAdd.length})` : ''}</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Create Group Modal */}
+                    {showCreateGroupModal && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center">
+                            <div className="absolute inset-0 bg-black/50" onClick={() => { setShowCreateGroupModal(false); setNewGroupName(''); }}></div>
+                            <form onSubmit={createGroupSubmit} className="bg-white dark:bg-[#111818] rounded-lg shadow-lg w-96 p-4 z-60">
+                                <h3 className="text-lg font-semibold text-[#1F2937] dark:text-white mb-2">Create Group</h3>
+                                <label className="text-sm text-gray-600 dark:text-gray-300">Group name</label>
+                                <input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className="w-full mt-2 mb-3 px-3 py-2 rounded border border-gray-200" placeholder="Enter group name" />
+                                <div className="flex justify-end gap-2">
+                                    <button type="button" onClick={() => { setShowCreateGroupModal(false); setNewGroupName(''); }} className="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded">Cancel</button>
+                                    <button type="submit" className="px-3 py-1 bg-[#137fec] text-white rounded">Create</button>
+                                </div>
+                            </form>
                         </div>
                     )}
                 </div>

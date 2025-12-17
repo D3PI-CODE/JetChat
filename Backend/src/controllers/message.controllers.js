@@ -11,7 +11,6 @@ import { removeGroupMemberService } from '../Services/messaging/removeGroupMembe
 import { changeProfilePicService } from '../Services/messaging/changeProfilePic.service.js';
 import { changeGroupAvatarService } from '../Services/messaging/changeGroupAvatar.service.js';
 import { broadcastUserIds } from '../Services/socket/broadcastUserIds.service.js';
-import { group } from '../models/Group.model.js';
 
 export const getMessages = async (req, res) => {
     try {
@@ -47,8 +46,12 @@ export const createGroup = async (req, res) => {
         
         const newGroup = await createGroupService(groupDTO);
 
-        res.json({ groupName, createdBy, groupID: newGroup.groupid });
-        console.log(`Group created successfully: ${groupName} (ID: ${newGroup.groupid})`);
+        if (newGroup.error) {
+            return res.status(403).json({ error: newGroup.error });
+        } else {
+            res.json({ message: `Group "${groupName}" created successfully.`, groupID: newGroup.groupID });
+            console.log(`Group "${groupName}" created by userID: ${createdBy}`);
+        }
 
         // Broadcast updated group list to all connected clients
         try {
@@ -284,7 +287,7 @@ export const changeGroupAvatar = async (req, res) => {
     try {
         const groupDTO = { ... req.body }
         const groupID = groupDTO.groupID;
-        
+
         const changeAvatarResult = await changeGroupAvatarService(groupDTO);
 
         if (changeAvatarResult && changeAvatarResult.error) {
