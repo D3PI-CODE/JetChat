@@ -8,6 +8,9 @@ import { addGroupMemberService } from '../Services/messaging/addGroupMember.serv
 import { changeGroupMemberRoleService } from '../Services/messaging/changeGroupMemberRole.service.js';
 import { leaveGroupService } from '../Services/messaging/leaveGroup.service.js';
 import { removeGroupMemberService } from '../Services/messaging/removeGroupMember.service.js';
+import { changeProfilePicService } from '../Services/messaging/changeProfilePic.service.js';
+import { changeGroupAvatarService } from '../Services/messaging/changeGroupAvatar.service.js';
+import { broadcastUserIds } from '../Services/socket/broadcastUserIds.service.js';
 import { group } from '../models/Group.model.js';
 
 export const getMessages = async (req, res) => {
@@ -248,5 +251,58 @@ export const removeGroupMember = async (req, res) => {
     } catch (err) {
         console.error('Error in removeFromGroup:', err);
         return res.status(500).json({ error: err && err.message || 'removeFromGroup failed' });
+    }
+}
+
+export const changeProfilePic = async (req, res) => {
+    try {
+        const userDTO = { ... req.body }
+        const requesterID = userDTO.requesterID;
+
+        const changePicResult = await changeProfilePicService(userDTO);
+
+        if (changePicResult && changePicResult.error) {
+            return res.status(403).json({ error: changePicResult.error });
+        } else {
+            res.json({ message: `Profile picture updated successfully for userID ${requesterID}.` });
+            console.log(`Profile picture updated successfully for userID ${requesterID}`);
+        }
+
+        try {
+            broadcastUserIds();
+        } catch (dbErr) {
+            console.error('Failed to update user avatar in DB:', dbErr);
+            return res.status(500).json({ error: 'Failed to broadcast user updates', details: dbErr.message });
+        }
+    } catch (err) {
+        console.error('Cloudinary upload error:', err);
+        return res.status(500).json({ error: err && err.message || 'changeProfilePic failed' });
+    }
+}
+
+export const changeGroupAvatar = async (req, res) => {
+    try {
+        const groupDTO = { ... req.body }
+        const groupID = groupDTO.groupID;
+        
+        const changeAvatarResult = await changeGroupAvatarService(groupDTO);
+
+        if (changeAvatarResult && changeAvatarResult.error) {
+            return res.status(403).json({ error: changeAvatarResult.error });
+        } else {
+            res.json({ message: `Group avatar updated successfully for groupID ${groupID}.` });
+            console.log(`Group avatar updated successfully for groupID ${groupID}`);
+        }
+
+        // Broadcast updated groups to all connected clients
+        try {
+            await broadcastGroups();
+        } catch (broadcastErr) {
+            return res.status(500).json({ error: 'Group avatar changed but broadcasting failed: ' + (broadcastErr && broadcastErr.message) });
+        }
+
+    } catch (err) {
+        console.error('Error in changeGroupAvatar:', err);
+        return res.status(500).json({ error: err && err.message || 'changeGroupAvatar failed' });
     }
 }
