@@ -999,7 +999,7 @@ export default function Chat() {
                     )}
 
                     {/* Members List Modal (overlay) */}
-                    {membersList && activeChat.groupID && (groupMembersMap[activeChat?.groupID] || []).length >= 0 && (
+                    {membersList && activeChat?.groupID && (groupMembersMap[activeChat?.groupID] || []).length >= 0 && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center">
                             <div className="absolute inset-0 bg-black/50" onClick={() => setMembersList(false)}></div>
                             <div className="bg-white dark:bg-[#111818] rounded-lg shadow-lg w-96 max-w-lg p-4 z-60">
