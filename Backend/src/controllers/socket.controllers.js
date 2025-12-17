@@ -3,7 +3,7 @@ import { MessageModel } from '../models/message.model.js';
 import { UserModel } from '../models/user.model.js';
 import Cloudinary from '../config/CloudinaryInit.js';
 import { GroupModel } from '../models/Group.model.js';
-import { broadcastUserIds } from '../Services/socket/BroadcastUserIDs.service.js';
+import { broadcastUserIds } from '../Services/socket/broadcastUserIds.service.js';
 import { broadcastGroups } from '../Services/socket/BroadcastGroups.service.js';
 import { markAsRead } from '../Services/socket/MarkAsRead.service.js';
 import { sendMessage } from '../Services/socket/SendMessage.js';

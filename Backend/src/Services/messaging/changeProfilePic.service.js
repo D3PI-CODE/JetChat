@@ -3,22 +3,23 @@ import { messagingDB } from '../../index.js';
 
 
 export const changeProfilePicService = async (userDTO) => {
+    
+    const requesterID = userDTO.requesterID;
+    const imageUrl = userDTO.imageUrl;
+
+    if (!requesterID) {
+        return { error: 'Unauthenticated' };
+    }
+
+    if (!imageUrl) {
+        return { error: 'No image URL provided' };
+    }
+
+    if (typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
+        return { error: 'Invalid image URL' };
+    }
+
     try{
-        const requesterID = userDTO.requesterID;
-        const imageUrl = userDTO.imageUrl;
-
-        if (!requesterID) {
-            return { error: 'Unauthenticated' };
-        }
-
-        if (!imageUrl) {
-            return { error: 'No image URL provided' };
-        }
-
-        if (typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
-            return { error: 'Invalid image URL' };
-        }
-
         const userModel = new UserModel(messagingDB);
         await userModel.getUserModel().update({ avatarUrl: imageUrl }, { where: { id: requesterID } });
     } catch (dbErr) {
