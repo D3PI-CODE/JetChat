@@ -5,6 +5,10 @@ import { broadcastGroups } from '../Services/socket/BroadcastGroups.service.js';
 import { deleteGroupService } from '../Services/messaging/deleteGroup.service.js';
 import { renameGroupService } from '../Services/messaging/renameGroup.service.js';
 import { addGroupMemberService } from '../Services/messaging/addGroupMember.service.js';
+import { changeGroupMemberRoleService } from '../Services/messaging/changeGroupMemberRole.service.js';
+import { leaveGroupService } from '../Services/messaging/leaveGroup.service.js';
+import { removeGroupMemberService } from '../Services/messaging/removeGroupMember.service.js';
+import { group } from '../models/Group.model.js';
 
 export const getMessages = async (req, res) => {
     try {
@@ -149,3 +153,100 @@ export const addGroupMember = async (req, res) => {
         res.status(500).json({ error: err && err.message || 'addtoGroup failed' });
     }
 };
+
+export const changeGroupMemberRole = async (req, res) => {
+    try {
+        const groupDTO = { ... req.body }
+        const groupID = groupDTO.groupID;
+        const newRole = groupDTO.newRole;
+        const memberID = groupDTO.memberID;
+        const requesterID = groupDTO.requesterID;
+
+        if (!groupID || !newRole || !memberID || !requesterID) {
+            return res.status(400).json({ error: 'Missing parameters' });
+        }
+
+        const changeRoleResult = await changeGroupMemberRoleService(groupDTO);
+
+        if (changeRoleResult && changeRoleResult.error) {
+            return res.status(403).json({ error: changeRoleResult.error });
+        } else {
+            res.json({ message: `Member with ID ${memberID} role changed to ${newRole} in group ${groupID} successfully.` });
+            console.log(`Member with ID ${memberID} role changed to ${newRole} in group ${groupID}`);
+        }
+
+        // Broadcast updated groups to affected users so their lists update immediately
+        try {
+            await broadcastGroups();
+        } catch (bErr) {
+            return res.status(500).json({ error: 'Role changed but broadcasting failed: ' + (bErr && bErr.message) });
+        }
+
+    } catch (err) {
+        console.error('Error in changeRole:', err);
+        res.status(500).json({ error: err && err.message || 'changeRole failed' });
+    }
+};
+
+export const leaveGroup = async (req, res) => {
+    try {
+        const groupDTO = { ... req.body }
+        const groupID = groupDTO.groupID;
+        const requesterID = groupDTO.requesterID;
+
+        if (!groupID || !requesterID) {
+            return res.status(400).json({ error: 'Missing parameters' });
+        }
+
+        console.log(`MemberID: ${requesterID} leaving groupID: ${groupID}`);
+        const leaveGroupResult = await leaveGroupService(groupDTO);
+
+        if (leaveGroupResult && leaveGroupResult.error) {
+            return res.status(403).json({ error: leaveGroupResult.error });
+        } else {
+            res.json({ message: `Member with ID ${requesterID} left group ${groupID} successfully.` });
+            console.log(`Member with ID ${requesterID} left group ${groupID}`);
+        }
+
+        try {
+            await broadcastGroups();
+        } catch (bErr) {
+            return res.status(500).json({ error: 'Left group but broadcasting failed: ' + (bErr && bErr.message) });
+        }
+    } catch (err) {
+        return res.status(500).json({ error: err && err.message || 'leaveGroup failed' });
+    }
+};
+
+export const removeGroupMember = async (req, res) => {
+    try {
+        const groupDTO = { ... req.body }
+        const groupID = groupDTO.groupID;
+        const memberID = groupDTO.memberID;
+        const requesterID = groupDTO.requesterID;
+
+        if (!groupID || !memberID || !requesterID) {
+            return res.status(400).json({ error: 'Missing parameters' });
+        }
+
+        const removeMemberResult = await removeGroupMemberService(groupDTO);
+
+        if (removeMemberResult && removeMemberResult.error) {
+            return res.status(403).json({ error: removeMemberResult.error });
+        } else {
+            res.json({ message: `Member with ID ${memberID} removed from group ${groupID} successfully.` });
+            console.log(`Member with ID ${memberID} removed from group ${groupID} by requesterID ${requesterID}`);
+        }
+
+        // Broadcast updated groups to affected users so their lists update immediately
+        try { 
+            await broadcastGroups(); 
+        } catch (bErr) {
+            return res.status(500).json({ error: 'Member removed but broadcasting failed: ' + (bErr && bErr.message) });
+        }
+
+    } catch (err) {
+        console.error('Error in removeFromGroup:', err);
+        return res.status(500).json({ error: err && err.message || 'removeFromGroup failed' });
+    }
+}

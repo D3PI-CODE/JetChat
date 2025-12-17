@@ -5,7 +5,10 @@ import {
     getMessages, 
     createGroup,
     renameGroup,
-    addGroupMember
+    addGroupMember,
+    changeGroupMemberRole,
+    leaveGroup,
+    removeGroupMember
 } from '../controllers/message.controllers.js';
 
 const msgRouter = express.Router();
@@ -24,20 +27,14 @@ msgRouter.patch('/rename-Group', tokenAuth, renameGroup);
 
 msgRouter.post('/add-Group-Member', tokenAuth, addGroupMember);
 
-msgRouter.delete('/remove-Group-Member', tokenAuth, (req, res) => {
-    res.json({ message: 'Remove group member endpoint' });
-});
+msgRouter.delete('/remove-Group-Member', tokenAuth, removeGroupMember);
 
-msgRouter.patch('/change-Group-Member-Role', tokenAuth, (req, res) => {
-    res.json({ message: 'Change group member role endpoint' });
-});
+msgRouter.patch('/change-Group-Member-Role', tokenAuth, changeGroupMemberRole);
 
 msgRouter.patch('/change-Group-Avatar', tokenAuth, (req, res) => {
     res.json({ message: 'Change group avatar endpoint' });
 });
 
-msgRouter.delete('/leave-group', tokenAuth, (req, res) => {
-    res.json({ message: 'Leave group endpoint' });
-});
+msgRouter.delete('/leave-group', tokenAuth, leaveGroup);
 
 export default msgRouter;
