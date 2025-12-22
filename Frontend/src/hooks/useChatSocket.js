@@ -20,7 +20,9 @@ export default function useChatSocket({ url = 'http://localhost:5002', token, us
     socketRef.current = socket;
 
     return () => {
-      try { socket.disconnect(); } catch (e) {}
+      try { socket.disconnect(); } catch (e) {
+        console.error('Socket disconnect error:', e && e.message);
+      }
       socketRef.current = null;
     };
   }, [url, token, userID, email]);

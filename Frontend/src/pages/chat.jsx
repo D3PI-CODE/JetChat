@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import './chat.css';
 import useChatSocket from '../hooks/useChatSocket';
-import Textbubble from './Textbubble';
+import Textbubble from '../components/Textbubble';
 import { MdGroupAdd, MdGroupRemove, MdExitToApp, MdOutlineDeleteOutline, MdDriveFileRenameOutline } from "react-icons/md";
 import { IoIosClose } from "react-icons/io";
 import { SelectValueText } from '@ark-ui/react';
@@ -22,7 +22,6 @@ export default function Chat() {
     const [activeChat, setActiveChat] = useState(null);
     const textpanel = useRef(null);
     const activeChatRef = useRef(activeChat);
-    // UI state
     const [membersList, setMembersList] = useState(false);
     const [showAddMembersModal, setShowAddMembersModal] = useState(false);
     const [selectedToAdd, setSelectedToAdd] = useState([]);
@@ -593,33 +592,6 @@ export default function Chat() {
         }
     };
 
-    const addMember = async () => {
-        try {
-            const memberEmail = prompt("Enter the email of the user to add to the group:");
-            if (!memberEmail) return;
-            let memberID = "";
-            users.forEach(u => { if (memberEmail === u.email) memberID = u.userID; });
-            if (!activeChat || !activeChat.group) { alert("No active group selected."); return; }
-
-            const payload = {
-                groupID: activeChat.groupID,
-                memberEmail,
-                memberID,
-                requesterID: myUserID // backend service expects requesterID in body
-            };
-
-            const data = await addGroupMemberApi({ groupID: payload.groupID, memberEmail: payload.memberEmail, memberID: payload.memberID, requesterID: payload.requesterID, token });
-            if (data && data.error) {
-                alert("Error adding member: " + data.error);
-            } else {
-                alert('Member added successfully');
-            }
-        } catch (err) {
-            console.error('addMember request failed:', err);
-            alert('Add member failed: ' + (err?.response?.data?.error || err.message));
-        }
-    };
-
     const handleInlineRemove = (member) => {
         if (!member) return;
         if (!activeChat || !activeChat.group) { alert('No active group selected.'); return; }
@@ -668,27 +640,6 @@ export default function Chat() {
         setSelectedToAdd([]);
     };
 
-    const removeMember = () => {
-        const memberEmail = prompt("Enter the email of the user to remove from the group:");
-        let memberID = ""
-        users.forEach(u => {
-            if (memberEmail === u.email) {
-                console.log(u.userID);
-                memberID = u.userID;
-            } 
-        });
-        console.log("MemberID: ", memberID);
-        if (!memberEmail) return;
-        if (!activeChat || !activeChat.group) {
-            alert("No active group selected.");
-            return;
-        }
-        const socket = socketRef.current;
-        if (socket) {
-            socket.emit('removeGroupMember', { groupID: activeChat.groupID, memberEmail, memberID: memberID });
-        }
-    };
-
     const renameGroup = () => {
         const newGroupName = prompt("Enter the new group name:");
         if (!newGroupName) return;
@@ -730,6 +681,7 @@ export default function Chat() {
                 if (!el.contains(e.target)) setOpenRoleDropdownFor(null);
             } catch (err) {
                 setOpenRoleDropdownFor(null);
+                console.log(err);
             }
         };
         document.addEventListener('mousedown', handler);
@@ -860,6 +812,19 @@ export default function Chat() {
         if (!list || list.length === 0) return null;
         if (list.length === 1) return `${list[0].username || list[0].name || 'Someone'} is typing...`;
         return `${list.length} people are typing...`;
+    })();
+
+    // Prepare sorted members: owners first (always on top), then others A→Z
+    const sortedMembers = (() => {
+        const members = (groupMembersMap[activeChat?.groupID] || []);
+        if (!Array.isArray(members) || members.length === 0) return [];
+        const owners = members.filter(m => m && m.role === 'owner');
+        const others = members.filter(m => !m || m.role !== 'owner').slice().sort((a, b) => {
+            const an = (a && (a.name || a.username || a.email) || '').toLowerCase();
+            const bn = (b && (b.name || b.username || b.email) || '').toLowerCase();
+            return an.localeCompare(bn, undefined, { sensitivity: 'base' });
+        });
+        return [...owners, ...others];
     })();
 
     return (
@@ -1021,47 +986,41 @@ export default function Chat() {
                                     )}
                                 </div>
                                 <ul className={`max-h-60 ${openRoleDropdownFor ? 'overflow-visible' : 'overflow-y-auto'}`}>
-                                {(groupMembersMap[activeChat?.groupID] || []).map((m) => {
+                                {sortedMembers.map((m) => {
+                                    const hoverDisabled = !!openRoleDropdownFor;
+                                    const roleChangeDisabled = !isAdmin || ((m.id && String(m.id) === String(myUserID)) || (m.email === myEmail));
                                     const canRemove = (
                                         (isOwner && m.email !== myEmail && m.role !== 'owner') ||
                                         (isAdmin && !isOwner && m.email !== myEmail && (m.role === 'member' || !m.role))
                                     );
                                     return (
-                                    <li key={m.id || m.email} className="group relative text-sm text-[#1F2937] dark:text-white mb-1 flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-800 rounded p-2">
+                                    <li key={m.id || m.email} className={`group relative text-sm text-[#1F2937] dark:text-white mb-1 flex justify-between items-center ${hoverDisabled ? '' : 'hover:bg-gray-50 dark:hover:bg-gray-800'} rounded p-2`}>
                                         <div>
                                             <div className="font-medium">{m.name || m.email}</div>
                                             <div className="text-xs text-gray-500">{m.email}</div>
                                         </div>
                                         <div className="flex items-center gap-2 relative">
-                                            <div className={`transform transition-transform duration-150 ${canRemove ? 'group-hover:-translate-x-14' : ''}`}>
+                                            <div className={`transform transition-transform duration-150 ${canRemove ? (hoverDisabled ? '' : 'group-hover:-translate-x-14') : ''}`}>
                                                 {m.role === 'owner' ? (
                                                     <div className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">owner</div>
                                                 ) : (
-                                                    <div className="relative inline-block" data-role-for={m.email}>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); const disabled = !isAdmin || ((m.id && String(m.id) === String(myUserID)) || (m.email === myEmail)); if (disabled) return; setOpenRoleDropdownFor(openRoleDropdownFor === m.email ? null : m.email); }}
-                                                            className={(() => {
-                                                                const disabled = !isAdmin || ((m.id && String(m.id) === String(myUserID)) || (m.email === myEmail));
-                                                                return `text-xs px-3 py-1 rounded ${disabled ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-[#137fec] text-white hover:bg-[#0f6fe6]'} `;
-                                                            })()}
+                                                    <div className="relative inline-block" data-role-for={m.email} style={{ zIndex: 99999 }}>
+                                                        <select
+                                                            value={m.role || 'member'}
+                                                            disabled={roleChangeDisabled}
+                                                            onChange={(e) => { e.stopPropagation(); handleRoleChange(m, e.target.value); }}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className={`text-xs px-3 py-1 rounded ${roleChangeDisabled ? 'bg-gray-300 text-gray-600 cursor-not-allowed' : 'bg-[#137fec] text-white hover:bg-[#0f6fe6]'}`}
                                                         >
-                                                            {m.role || 'member'}
-                                                        </button>
-
-                                                        {openRoleDropdownFor === m.email && (
-                                                            <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-[#111818] rounded shadow-lg z-50 ring-1 ring-black/5">
-                                                                <div className="py-1">
-                                                                    <button onClick={(e) => { e.stopPropagation(); handleRoleChange(m, 'admin'); setOpenRoleDropdownFor(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">admin</button>
-                                                                    <button onClick={(e) => { e.stopPropagation(); handleRoleChange(m, 'member'); setOpenRoleDropdownFor(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">member</button>
-                                                                </div>
-                                                            </div>
-                                                        )}
+                                                            <option value="admin">admin</option>
+                                                            <option value="member">member</option>
+                                                        </select>
                                                     </div>
                                                 )}
                                             </div>
 
                                             {canRemove && (
-                                                <button onClick={() => handleInlineRemove(m)} className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-sm text-white bg-red-500 px-2 py-1 rounded pointer-events-none group-hover:pointer-events-auto">
+                                                <button onClick={() => handleInlineRemove(m)} className={`absolute right-2 top-1/2 -translate-y-1/2 transition-opacity text-sm text-white bg-red-500 px-2 py-1 rounded ${hoverDisabled ? 'opacity-100 pointer-events-auto' : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto'}`}>
                                                     <MdGroupRemove />
                                                 </button>
                                             )}
