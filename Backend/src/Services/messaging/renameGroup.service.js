@@ -5,7 +5,7 @@ import { GroupModel } from '../../models/Group.model.js';
 export const renameGroupService = async (groupDTO) => {
     const groupID = groupDTO.groupID;
     const newName = groupDTO.newGroupName;
-    const requesterId = groupDTO.requesterId;
+    const requesterId = groupDTO.requesterID;
 
     if (!requesterId) {
         return { error: 'Unauthenticated' };

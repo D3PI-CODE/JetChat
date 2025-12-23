@@ -4,11 +4,6 @@ import { FiShare2 } from 'react-icons/fi';
 
 
 export default function Textbubble({ messages = [], activeChat = null, users = [], groupMembersMap = {}, onForward = () => {} }) {
-    if (!Array.isArray(messages) || messages.length === 0) {
-        return (
-            <div className="flex items-center justify-center text-sm text-gray-500">No messages</div>
-        );
-    }
 
     return (
         <div className="flex flex-col gap-4">

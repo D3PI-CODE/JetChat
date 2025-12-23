@@ -31,7 +31,17 @@ export default function ChatWindow({
             </header>
 
             <div ref={textPanelRef} className="flex-1 overflow-y-auto p-6 space-y-6">
-                <Textbubble messages={messages} activeChat={activeChat} users={users} groupMembersMap={groupMembersMap} onForward={onForward} />
+                {messages && messages.length > 0 ? (
+                    <Textbubble 
+                        messages={messages} 
+                        activeChat={activeChat} 
+                        users={users} 
+                        groupMembersMap={groupMembersMap} 
+                        onForward={onForward} 
+                    />
+                ) : (
+                    <div className="flex items-center justify-center text-sm text-gray-500">No messages</div>
+                )}
             </div>
 
             <div className="px-6 pb-2 text-sm text-gray-700 dark:text-gray-300 h-6">

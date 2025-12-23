@@ -158,9 +158,8 @@ export const getMessagesService = async (userDTO) => {
         } catch (fbErr) {
             console.warn('Fallback enrichment failed:', fbErr && fbErr.message);
         }
+        return mergedPayload;
     } catch (err) {
         console.error('Error in getMessagesService:', err);
     }
-    
-    return mergedPayload;
 }

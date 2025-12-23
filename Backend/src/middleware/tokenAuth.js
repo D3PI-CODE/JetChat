@@ -4,14 +4,15 @@ export const tokenAuth = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     if (!token) {
-        return res.sendStatus(401);
+        return res.status(401).json({ error: 'No authorization token provided' });
     }
 
     const JWT_SECRET = process.env.JWT_SECRET;
 
     jwt.verify(token, JWT_SECRET, (err, user) => {
         if (err) {
-            return res.sendStatus(403);
+            console.error('tokenAuth verify error:', err && err.message);
+            return res.status(403).json({ error: 'Invalid or expired token', details: err && err.message });
         }
         req.user = user;
         next();

@@ -14,7 +14,8 @@ import { broadcastUserIds } from '../Services/socket/broadcastUserIds.service.js
 
 export const getMessages = async (req, res) => {
     try {
-        const userDTO = {... req.body}
+        // Support both GET (query) and POST (body) callers by merging query into body
+        const userDTO = { ...req.body, ...req.query };
         const senderID = userDTO.from
         const receiverID = userDTO.to 
         const groupID = userDTO.groupID 
@@ -22,8 +23,10 @@ export const getMessages = async (req, res) => {
         const toEmail = userDTO.toEmail 
         console.log("Fetching messages between", senderID || fromEmail, "and", receiverID || toEmail, "groupID", groupID);
 
-        if (!groupID && (!senderID || !receiverID)) {
-            return res.status(400).json({ error: 'Missing sender or receiver identifiers' });
+        if (!senderID || !receiverID) {
+            if (!groupID) {
+                return res.status(400).json({ error: 'Missing sender or receiver identifiers' });
+            }
         }
 
         const mergedPayload = await getMessagesService(userDTO);

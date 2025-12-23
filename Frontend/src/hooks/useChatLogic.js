@@ -7,6 +7,9 @@ import {
     removeGroupMemberApi,
     leaveGroupApi,
     deleteGroupApi,
+    getMessagesApi,
+    renameGroupApi,
+    changeGroupMemberRole
 } from '@/Services/api';
 
 export const useChatLogic = () => {
@@ -211,32 +214,11 @@ export const useChatLogic = () => {
             }
         };
 
-        const handlePreviousMessages = (data) => {
-            if (Array.isArray(data)) {
-                const normalized = data.map(m => ({
-                    id: m.id ?? m.messageid,
-                    groupID: m.groupID,
-                    content: m.content,
-                    fromEmail: m.from ?? m.fromEmail,
-                    toEmail: m.to ?? m.toEmail,
-                    timestamp: m.timestamp ?? m.createdAt,
-                    type: m.type ?? (m.from === myEmail ? 'sent' : 'received'),
-                    read: m.read ?? false,
-                    fromUserId: m.fromUserId ?? m.senderID,
-                    fromUsername: m.fromUsername ?? m.username,
-                    fromName: m.fromName,
-                    fromAvatar: m.fromAvatar,
-                }));
-                setTextMessage(normalized);
-            }
-        };
-
         // ... Register Listeners
         socket.on("users", handleUsers);
         socket.on("groups", handleGroups);
         socket.on('receiveMessage', handleReceive);
         socket.on('sentMessage', handleSent);
-        socket.on('previousMessages', handlePreviousMessages);
         
         // Helper to update unread counts
         const incrementUnread = (id, isGroup) => {
@@ -315,6 +297,29 @@ export const useChatLogic = () => {
     // --- Actions & Handlers ---
 
     // 1. Chat Switching
+    const getMessages = async () => {
+        const payload = { from: myUserID, fromEmail: myEmail, to: activeChat.userID, toEmail: activeChat.email, token };
+        if (activeChat.group) payload.groupID = activeChat.groupID;
+        const message = await getMessagesApi(payload);
+        if (Array.isArray(message.messages)) {
+            const normalized = message.messages.map(m => ({
+                id: m.id ?? m.messageid,
+                groupID: m.groupID,
+                content: m.content,
+                fromEmail: m.from ?? m.fromEmail,
+                toEmail: m.to ?? m.toEmail,
+                timestamp: m.timestamp ?? m.createdAt,
+                type: m.type ?? (m.from === myEmail ? 'sent' : 'received'),
+                read: m.read ?? false,
+                fromUserId: m.fromUserId ?? m.senderID,
+                fromUsername: m.fromUsername ?? m.username,
+                fromName: m.fromName,
+                fromAvatar: m.fromAvatar,
+            }));
+            setTextMessage(normalized);
+        }
+    }
+
     useEffect(() => {
         if (!activeChat || !socketRef.current) return;
         setTextMessage([]);
@@ -324,10 +329,8 @@ export const useChatLogic = () => {
             const matchUser = !activeChat.group && item.email === activeChat.email;
             return (matchGroup || matchUser) ? { ...item, unreadCount: 0, hasMention: false } : item;
         }));
-        
-        const payload = { from: myUserID, fromEmail: myEmail, to: activeChat.userID, toEmail: activeChat.email };
-        if (activeChat.group) payload.groupID = activeChat.groupID;
-        socketRef.current.emit('getMessages', payload);
+
+        getMessages();
         
         return () => stopTypingEmit(activeChat); // Stop typing on switch
     }, [activeChat]);
@@ -417,8 +420,8 @@ export const useChatLogic = () => {
         setSelectedToAdd([]);
     };
 
-    const changeRole = (member, role) => {
-        socketRef.current.emit('changeMemberRole', { groupID: activeChat.groupID, memberEmail: member.email, memberID: member.id, newRole: role });
+    const changeRole = async (member, role) => {
+        await changeGroupMemberRole({ groupID: activeChat.groupID, memberID: member.id, newRole: role, requesterID: myUserID, token });
     };
 
     const removeMember = async (member) => {
@@ -439,18 +442,12 @@ export const useChatLogic = () => {
             }
         }
     };
-    
-    const renameGroup = () => {
-        const name = prompt("New Name:");
-        if(name) socketRef.current.emit('renameGroup', { groupID: activeChat.groupID, newGroupName: name, requestedByEmail: myEmail, requestedByID: myUserID });
-    };
 
-    const renameGroupSubmit = () => {
+    const renameGroupSubmit = async () => {
         const name = (newGroupName || '').trim();
         if (!name) return alert('Please enter a new group name');
-        const socket = socketRef.current;
-        if (socket && activeChat && activeChat.group) {
-            socket.emit('renameGroup', { groupID: activeChat.groupID, newGroupName: name, requestedByEmail: myEmail, requestedByID: myUserID });
+        if (activeChat && activeChat.group) {
+            await renameGroupApi({ groupID: activeChat.groupID, newGroupName: name, requesterID: myUserID, token });
             // Optimistically update UI
             setVisible(prev => (prev || []).map(item => (item && item.group && String(item.groupID) === String(activeChat.groupID)) ? { ...item, username: name } : item));
             setActiveChat(prev => (prev && prev.groupID && String(prev.groupID) === String(activeChat.groupID)) ? { ...prev, username: name } : prev);
@@ -507,7 +504,7 @@ export const useChatLogic = () => {
         refs: { fileInputRef, textpanel: useRef(null) },
         actions: {
             setMessage, setActiveChat, handleLogOut, createGroup, addMembers, changeRole, removeMember,
-            leaveGroup, deleteGroup, renameGroup, handleAvatarUpload, toggleModal, sendMessage, handleTypingLocal,
+            leaveGroup, deleteGroup, handleAvatarUpload, toggleModal, sendMessage, handleTypingLocal,
             setNewGroupName, setSelectedToAdd, setForwardingMessage, renameGroupSubmit
         }
     };
