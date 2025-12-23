@@ -67,3 +67,19 @@ export const changeGroupMemberRole = async ({ groupID, memberID, newRole, reques
     });
   return resp.data;
 }
+
+export const changeProfilePicApi = async ({ imageUrl, requesterID, token }) => {
+  const resp = await axios.patch('http://localhost:5002/api/messaging/change-Profile', {
+            imageUrl, requesterID 
+        }, { headers: authHeaders(token) 
+    });
+  return resp.data;
+}
+
+export const changeGroupAvatarApi = async ({ groupID, imageUrl, requesterID, token }) => {
+  const resp = await axios.patch('http://localhost:5002/api/messaging/change-Group-Avatar', {
+            groupID, imageUrl, requesterID 
+        }, { headers: authHeaders(token) 
+    });
+  return resp.data;
+}

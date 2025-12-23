@@ -9,8 +9,11 @@ import {
     deleteGroupApi,
     getMessagesApi,
     renameGroupApi,
-    changeGroupMemberRole
+    changeGroupMemberRole,
+    changeProfilePicApi,
+    changeGroupAvatarApi
 } from '@/Services/api';
+import { uploadToCloudinary } from '@/Services/cloudinaryUpload';
 
 export const useChatLogic = () => {
     // --- State ---
@@ -458,16 +461,17 @@ export const useChatLogic = () => {
         toggleModal('renameGroup', false);
     };
 
-    const handleAvatarUpload = (e, isGroup) => {
+    const handleAvatarUpload = async (e, isGroup) => {
         const file = e.target.files?.[0];
         if (!file || !file.type.startsWith('image/')) return;
         const reader = new FileReader();
-        reader.onload = () => {
+        reader.onload = async () => {
             if (isGroup) {
-                socketRef.current.emit("changeGroupAvatar", { imageData: reader.result, groupID: activeChat.groupID, requestedByEmail: myEmail, requestedByID: myUserID });
+                const uploadLink = await uploadToCloudinary(reader.result, '/group_avatars');
+                await changeGroupAvatarApi({ groupID: activeChat.groupID, imageUrl: uploadLink, requesterID: myUserID, token });
             } else {
-                setProfileImage(reader.result);
-                socketRef.current.emit("changeProfilePic", { imageData: reader.result, email: myEmail });
+                const uploadLink = await uploadToCloudinary(reader.result, '/avatars');
+                await changeProfilePicApi({ imageUrl: uploadLink, requesterID: myUserID, token });
             }
         };
         reader.readAsDataURL(file);
