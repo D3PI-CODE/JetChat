@@ -1,11 +1,13 @@
 import axios from 'axios';
 
+const authHeaders = (token) => ({
+    Authorization: `Bearer ${token}`,
+});
+
 export const createGroupApi = async ({ groupName, createdBy, token }) => {
   const resp = await axios.post('http://localhost:5002/api/messaging/create-Group', {
             groupName, createdBy 
-        }, { headers: {
-            Authorization: `Bearer ${token}` 
-        } 
+        }, { headers: authHeaders(token) 
     });
   return resp.data;
 };
@@ -13,9 +15,15 @@ export const createGroupApi = async ({ groupName, createdBy, token }) => {
 export const addGroupMemberApi = async ({ groupID, memberEmail, memberID, requesterID, token }) => {
     const resp = await axios.post('http://localhost:5002/api/messaging/add-Group-Member', {
             groupID, memberEmail, memberID, requesterID 
-        }, { headers: {
-            Authorization: `Bearer ${token}` 
-        } 
+        }, { headers: authHeaders(token) 
     });
   return resp.data;
 };
+
+export const removeGroupMemberApi = async ({ groupID, memberID, requesterID, token }) => {
+  const resp = await axios.delete('http://localhost:5002/api/messaging/remove-Group-Member', {
+      data: { groupID, memberID, requesterID },
+      headers: authHeaders(token)
+  });
+  return resp.data;
+}

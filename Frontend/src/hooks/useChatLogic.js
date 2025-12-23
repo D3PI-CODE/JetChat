@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useState, useRef } from 'react';
 import useChatSocket from './useChatSocket'; // Assuming this exists based on your code
-import { createGroupApi, addGroupMemberApi } from '@/Services/api';
+import { createGroupApi, addGroupMemberApi, removeGroupMemberApi } from '@/Services/api';
 
 export const useChatLogic = () => {
     // --- State ---
@@ -113,12 +113,21 @@ export const useChatLogic = () => {
                     const next = { ...(prev || {}) };
                     for (const g of groupsList) {
                         if (g && g.groupid) {
-                            next[g.groupid] = (g.members || []).map(m => ({ 
-                                id: m.id, 
-                                name: m.name || m.username || m.email, 
-                                email: m.email, 
-                                role: m.role 
+                            const membersArr = (g.members || []).map(m => ({
+                                id: m.id,
+                                name: m.name || m.username || m.email,
+                                email: m.email,
+                                role: m.role
                             }));
+
+                            // Owner should always be first, others alphabetical by name
+                            membersArr.sort((a, b) => {
+                                if (a.role === 'owner' && b.role !== 'owner') return -1;
+                                if (b.role === 'owner' && a.role !== 'owner') return 1;
+                                return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+                            });
+
+                            next[g.groupid] = membersArr;
                         }
                     }
                     return next;
@@ -406,8 +415,8 @@ export const useChatLogic = () => {
     const addMembers = async () => {
         if (!selectedToAdd.length || !activeChat?.group) return;
         await Promise.all(selectedToAdd.map(async email => {
-             const u = users.find(usr => usr.email === email);
-             await addGroupMemberApi({ groupID: activeChat.groupID, memberEmail: email, memberID: u?.userID, requesterID: myUserID, token });
+            const u = users.find(usr => usr.email === email);
+            await addGroupMemberApi({ groupID: activeChat.groupID, memberEmail: email, memberID: u?.userID, requesterID: myUserID, token });
         }));
         toggleModal('addMembers', false);
         setSelectedToAdd([]);
@@ -417,8 +426,8 @@ export const useChatLogic = () => {
         socketRef.current.emit('changeMemberRole', { groupID: activeChat.groupID, memberEmail: member.email, memberID: member.id, newRole: role });
     };
 
-    const removeMember = (member) => {
-        socketRef.current.emit('removeGroupMember', { groupID: activeChat.groupID, memberEmail: member.email, memberID: member.id });
+    const removeMember = async (member) => {
+        await removeGroupMemberApi({ groupID: activeChat.groupID, memberID: member.id, requesterID: myUserID, token });
     };
 
     const leaveGroup = () => {
