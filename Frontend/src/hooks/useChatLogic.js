@@ -1,7 +1,13 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useState, useRef } from 'react';
 import useChatSocket from './useChatSocket'; // Assuming this exists based on your code
-import { createGroupApi, addGroupMemberApi, removeGroupMemberApi } from '@/Services/api';
+import { 
+    createGroupApi, 
+    addGroupMemberApi, 
+    removeGroupMemberApi,
+    leaveGroupApi,
+    deleteGroupApi,
+} from '@/Services/api';
 
 export const useChatLogic = () => {
     // --- State ---
@@ -261,17 +267,6 @@ export const useChatLogic = () => {
              if (data.email === myEmail) setProfileImage(data.avatarUrl);
         });
 
-        // Group Event Success/Error Handlers
-        socket.on('deleteGroupSuccess', (data) => {
-             const gid = data?.groupID;
-             if (gid) {
-                 setGroupMembersMap(prev => { const n = {...prev}; delete n[gid]; return n; });
-                 setVisible(prev => prev.filter(i => !(i.group && String(i.groupID) === String(gid))));
-                 if (activeChatRef.current?.groupID === gid) setActiveChat(null);
-             }
-             toggleModal('membersList', false);
-        });
-
         socket.on('changeGroupAvatarSuccess', (data) => {
             const { groupID, newAvatarUrl, groupAvatar } = data || {};
             const url = groupAvatar || newAvatarUrl;
@@ -430,13 +425,18 @@ export const useChatLogic = () => {
         await removeGroupMemberApi({ groupID: activeChat.groupID, memberID: member.id, requesterID: myUserID, token });
     };
 
-    const leaveGroup = () => {
-        socketRef.current.emit('leaveGroup', { groupID: activeChat.groupID, memberEmail: myEmail, memberID: myUserID });
+    const leaveGroup = async () => {
+        await leaveGroupApi({ groupID: activeChat.groupID, requesterID: myUserID, token });
     };
 
-    const deleteGroup = () => {
+    const deleteGroup = async () => {
         if(confirm("Confirm deletion?")) {
-            socketRef.current.emit('deleteGroup', { groupID: activeChat.groupID, requestedByEmail: myEmail, requestedByID: myUserID });
+            const deleteResp = await deleteGroupApi({ groupID: activeChat.groupID, requesterId: myUserID, token });
+            if (deleteResp && deleteResp.message) {
+                setGroupMembersMap(prev => { const n = {...prev}; delete n[activeChat.groupID]; return n; });
+                setVisible(prev => prev.filter(i => !(i.group && String(i.groupID) === String(activeChat.groupID))));
+                if (activeChatRef.current?.groupID === activeChat.groupID) setActiveChat(null);
+            }
         }
     };
     

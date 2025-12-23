@@ -27,3 +27,19 @@ export const removeGroupMemberApi = async ({ groupID, memberID, requesterID, tok
   });
   return resp.data;
 }
+
+export const leaveGroupApi = async ({ groupID, requesterID, token }) => {
+  const resp = await axios.delete('http://localhost:5002/api/messaging/leave-group', {
+      data: { groupID, requesterID },
+      headers: authHeaders(token)
+  });
+  return resp.data;
+} 
+
+export const deleteGroupApi = async ({ groupID, requesterId, token }) => {
+  const resp = await axios.delete('http://localhost:5002/api/messaging/delete-Group', {
+      data: { groupID, requesterId },
+      headers: authHeaders(token)
+  });
+  return resp.data;
+}
