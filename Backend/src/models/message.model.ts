@@ -2,7 +2,7 @@ import Sequelize from 'sequelize';
 import { User, UserModel } from './user.model.js';
 import { GroupModel } from './Group.model.js';
 
-export const message = (sequelize) => {
+export const message = (sequelize : Sequelize.Sequelize) => {
     const messageModel = sequelize.define(
         'Message',
         {
@@ -47,11 +47,14 @@ export const message = (sequelize) => {
 
 
 class MessageModel {
-    constructor(sequelize) {
+    sequelize: Sequelize.Sequelize;
+    Message: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    User: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    Group: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    constructor(sequelize : Sequelize.Sequelize) {
         this.sequelize = sequelize;
         this.Message = message(sequelize);
         this.User = new UserModel(sequelize).getUserModel();
-        this.model = sequelize.models;
         this.Group = new GroupModel(sequelize).getGroupModel();
 
         try {
@@ -71,14 +74,14 @@ class MessageModel {
         return this.Message;
     }
 
-    createMessage(senderID, receiverID, content) {
+    createMessage(senderID: string, receiverID: string, content: string) {
         return this.Message.create({
             senderID,
             receiverID,
             content,
         })
     }
-    getMsgByUserIDs(senderID, receiverID) {
+    getMsgByUserIDs(senderID: string, receiverID: string) {
         return this.Message.findAll({
             where: {
                 senderID: senderID,
@@ -88,7 +91,7 @@ class MessageModel {
             include: this.User,        
         });
     }
-    getMsgByGroupID(groupID) {
+    getMsgByGroupID(groupID: string) {
         return this.Message.findAll({
             where: {
                 groupID: groupID,
@@ -98,14 +101,14 @@ class MessageModel {
         });
     }
 
-    updateReadStatus(messageID, readStatus) {
+    updateReadStatus(messageID: string, readStatus: boolean) {
         return this.Message.update(
             { read: readStatus },
             { where: { messageid: messageID } }
         );
     }
 
-    countUnreadMessages(userID, receiverID) {
+    countUnreadMessages(userID: string, receiverID :string) {
         return this.Message.count({
             where: {
                 senderID: userID,

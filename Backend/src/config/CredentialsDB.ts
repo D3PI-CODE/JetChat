@@ -1,7 +1,6 @@
-import Sequelize from 'sequelize';
-import dotenv from 'dotenv';
+import { Sequelize } from 'sequelize';
 
-export function initializeMessagingDB() {
+export function initializeCredentialsDB() {
     const sequelize = new Sequelize({
         dialect : 'postgres',
         host : process.env.DB_HOST
@@ -9,7 +8,7 @@ export function initializeMessagingDB() {
         port : process.env.DB_PORT
             ? parseInt(process.env.DB_PORT, 10)
             : 5432,
-        database : process.env.MSGDB_NAME,
+        database : process.env.CREDDB_NAME,
         username : process.env.DB_USER,
         password : process.env.DB_PASSWORD,
         logging : false,

@@ -1,7 +1,7 @@
 import Sequelize from 'sequelize';
 import { randomUUID } from 'crypto';
 
-export const User = (sequelize) => {
+export const User = (sequelize: Sequelize.Sequelize) => {
     const UserModel = sequelize.define(
         'User',
         {
@@ -38,7 +38,10 @@ export const User = (sequelize) => {
 };
 
 class UserModel {
-    constructor(sequelize) {
+    sequelize: Sequelize.Sequelize;
+    User: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    model: Record<string, Sequelize.ModelStatic<Sequelize.Model<any, any>>>;
+    constructor(sequelize : Sequelize.Sequelize) {
         this.sequelize = sequelize;
         this.User = User(sequelize);
         this.model = sequelize.models;
@@ -48,7 +51,7 @@ class UserModel {
         return this.User;
     }
 
-    async createUser(email, username, attempts = 0) {
+    async createUser(email: string, username: string, attempts = 0): Promise<Sequelize.Model<any, any>> {
         try {
             // Attempt to create. If successful, it returns the user.
             const user = await this.User.create({
@@ -56,19 +59,19 @@ class UserModel {
                 username,
             });
             return user;
-        } catch (error) {
+        } catch (error: any) {
             // Check if this is a Unique Constraint Error (Collision)
             if (error.name === 'SequelizeUniqueConstraintError') {
                 if (error.fields.id) {
                     console.warn(`UUID Collision for USER ID detected. Retrying... (Attempt ${attempts + 1})`);
-                    return this.createUser(email, username);
+                    return this.createUser(email, username, attempts + 1);
                 }
             }
             throw error;
         }
     }
 
-    emailSearch(email) {
+    async emailSearch(email: string): Promise<string | null> {
         if (!email) {
             // Avoid passing undefined into Sequelize WHERE
             console.warn('UserModel.emailSearch called with falsy email:', email);

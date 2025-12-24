@@ -1,7 +1,6 @@
-import Sequelize from 'sequelize';
-import dotenv from 'dotenv';
+import { Sequelize } from 'sequelize';
 
-export function initializeCredentialsDB() {
+export function initializeMessagingDB() {
     const sequelize = new Sequelize({
         dialect : 'postgres',
         host : process.env.DB_HOST
@@ -9,14 +8,14 @@ export function initializeCredentialsDB() {
         port : process.env.DB_PORT
             ? parseInt(process.env.DB_PORT, 10)
             : 5432,
-        database : process.env.CREDDB_NAME,
+        database : process.env.MSGDB_NAME,
         username : process.env.DB_USER,
         password : process.env.DB_PASSWORD,
         logging : false,
     }) ;
     sequelize.authenticate().then(() => {
         console.log(`Connection to ${sequelize.getDatabaseName()} has been established successfully.`);
-    }).catch((error) => {
+    }).catch((error: any) => {
         console.error(`Unable to connect to the ${sequelize.getDatabaseName()} database:`, error);
     });
     return sequelize;

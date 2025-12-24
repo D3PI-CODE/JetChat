@@ -2,7 +2,7 @@ import Sequelize from 'sequelize';
 import { UserModel } from './user.model.js';
 import { GroupMemberModel } from './groupMember.model.js';
 
-export const group = (sequelize) => {
+export const group = (sequelize : Sequelize.Sequelize) => {
     const groupModel = sequelize.define(
         'Group',
         {
@@ -40,12 +40,16 @@ export const group = (sequelize) => {
 };
 
 class GroupModel {
-    constructor(sequelize) {
+    sequelize : Sequelize.Sequelize;
+    Group: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    GroupMember: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    User: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    model: any;
+    constructor(sequelize: Sequelize.Sequelize) {
         this.sequelize = sequelize;
         this.Group = group(sequelize);
         this.GroupMember = new GroupMemberModel(sequelize).getGroupMemberModel();
         this.User = new UserModel(sequelize).getUserModel();
-        this.model = sequelize.models;
 
         try {
             this.User.belongsToMany(this.Group, {through: this.GroupMember, foreignKey: 'memberID'});
@@ -56,11 +60,11 @@ class GroupModel {
         }
     }
 
-    getGroupModel() {
+    getGroupModel(): Sequelize.ModelStatic<Sequelize.Model<any, any>> {
         return this.Group;
     }
 
-    async createGroup(groupName, description, CreatorID) {
+    async createGroup(groupName: string, description: string, CreatorID: string) {
         const transaction = await this.sequelize.transaction();
         try {
             const group = await this.Group.create({
@@ -84,7 +88,7 @@ class GroupModel {
         }
     }
 
-    deleteGroup(groupID) {
+    deleteGroup(groupID: string) {
         return this.Group.destroy({
             where: { groupid: groupID }
         });

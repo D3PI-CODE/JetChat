@@ -1,7 +1,12 @@
-
+import type { Socket } from 'socket.io';
 import { verifyToken } from './tokenAuth.js';
 
-export const socketAuth = (socket, next) => {
+interface authSocket extends Socket {
+    userID?: string | null;
+    email?: string | null;
+}
+
+export const socketAuth = (socket: authSocket, next: (err?: Error) => void) => {
     const auth = socket.handshake.auth || {};
     const token = auth.token || null;
     const providedUserID = auth.userID || null;
@@ -11,15 +16,15 @@ export const socketAuth = (socket, next) => {
     if (token) {
         try {
             const payload = verifyToken(token);
-            const idFromToken = payload.userId || payload.id || payload.sub || null;
-            const emailFromToken = payload.email || payload.username || null;
+            const idFromToken = payload.userId
+            const emailFromToken = payload.email
             socket.userID = idFromToken || providedUserID || emailFromToken || providedEmail || null;
             socket.email = emailFromToken || providedEmail || null;
             if (!socket.userID && !socket.email) {
                 return next(new Error('Token verified but contained no usable id/email'));
             }
             return next();
-        } catch (err) {
+        } catch (err: any) {
             console.warn('Socket token verification failed:', err && err.message);
             return next(new Error('Invalid authentication token'));
         }

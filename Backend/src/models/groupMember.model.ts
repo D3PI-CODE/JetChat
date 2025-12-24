@@ -1,7 +1,8 @@
 import Sequelize from 'sequelize';
 import { UserModel } from './user.model.js';
+import type sequelize from 'sequelize';
 
-export const groupMember = (sequelize) => {
+export const groupMember = (sequelize : Sequelize.Sequelize) => {
     const groupMemberModel = sequelize.define(
         'GroupMember',
         {
@@ -35,11 +36,13 @@ export const groupMember = (sequelize) => {
 };
 
 class GroupMemberModel {
-    constructor(sequelize) {
+    sequelize: Sequelize.Sequelize;
+    GroupMember: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    User: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    constructor(sequelize : Sequelize.Sequelize) {
         this.sequelize = sequelize;
         this.GroupMember = groupMember(sequelize);
         this.User = new UserModel(sequelize).getUserModel();
-        this.model = sequelize.models;
     }
 
     getGroupMemberModel() {
