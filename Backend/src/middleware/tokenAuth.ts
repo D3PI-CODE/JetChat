@@ -10,12 +10,19 @@ export const tokenAuth = (req: Request, res: Response, next: NextFunction) => {
     }
 
     const JWT_SECRET: string = process.env.JWT_SECRET as string;
-
-    jwt.verify(token, JWT_SECRET, (err) => {
+    
+    jwt.verify(token, JWT_SECRET, (err, payload) => {
         if (err) {
             console.error('tokenAuth verify error:', err && err.message);
             return res.status(403).json({ error: 'Invalid or expired token', details: err && err.message });
         }
+        const p = (payload || {}) as any;
+        const normalized = {
+            id: p.id || p.userId || p.sub || null,
+            email: p.email || p.em || p.mail || null,
+            _raw: p,
+        };
+        (req as any).user = normalized;
         next();
     });
 }   
@@ -26,5 +33,10 @@ export const verifyToken = (token: string): JwtPayload => {
     const JWT_SECRET = process.env.JWT_SECRET;
     if (!JWT_SECRET) throw new Error('JWT_SECRET not configured');
     // jwt.verify can throw synchronously; let caller handle errors
-    return jwt.verify(token, JWT_SECRET) as JwtPayload;
+        const payload = jwt.verify(token, JWT_SECRET) as any;
+        return {
+            id: payload.id || payload.userId || payload.sub || null,
+            email: payload.email || payload.em || payload.mail || null,
+            _raw: payload,
+        };
 }

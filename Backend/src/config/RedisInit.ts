@@ -9,24 +9,7 @@ redisClient.on('ready', () => console.log('Redis client ready'));
 
 const EXPIRY_TIME = 3600; // 1 hour in seconds
 
-export async function redisHSetOrGet(key, field, cb) {
-    try {
-        const existing = await redisClient.hGet(key, field);
-        if (existing !== null && existing !== undefined) {
-            return existing;
-        }
-        const value = await cb();
-        // convert non-string values to JSON
-        const storeValue = typeof value === 'string' ? value : JSON.stringify(value);
-        await redisClient.hSetEx(key, field, storeValue, EXPIRY_TIME);
-        return storeValue;
-    } catch (err) {
-        console.error('Redis hashSetOrGet error:', err);
-        return await cb();
-    }
-}
-
-export async function redisSetOrGet(key, cb) {
+export async function redisSetOrGet(key: string, cb: () => Promise<string | object> | null) {
     try {
         const existing = await redisClient.get(key);
         if (existing !== null && existing !== undefined) {
@@ -48,7 +31,7 @@ export const redisInitialization = async () => {
     if (redisClient && !redisClient.isOpen) {
         await redisClient.connect();
     }
-    } catch (err) {
+    } catch (err: any) {
     console.warn('Redis connect failed at startup:', err && err.message ? err.message : err);
     }
 }

@@ -2,8 +2,34 @@ import React from 'react';
 import { RiCheckDoubleLine } from "react-icons/ri";
 import { FiShare2 } from 'react-icons/fi';
 
-
 export default function Textbubble({ messages = [], activeChat = null, users = [], groupMembersMap = {}, onForward = () => {} }) {
+
+    // Function to parse and highlight mentions in message content
+    const renderMessageWithMentions = (content) => {
+        if (!content) return content;
+
+        // Split content by mentions (@username)
+        const mentionRegex = /(@\w+)/g;
+        const parts = content.split(mentionRegex);
+
+        return parts.map((part, index) => {
+            if (part.startsWith('@') && part.length > 1) {
+                // This is a mention
+                const username = part.substring(1); // Remove the @
+                return (
+                    <span
+                        key={index}
+                        className="bg-blue-500/30 text-blue-200 px-1.5 py-0.5 rounded-md font-medium border border-blue-400/30 hover:bg-blue-500/40 transition-colors duration-300 cursor-pointer"
+                        title={`Mention: ${username}`}
+                    >
+                        {part}
+                    </span>
+                );
+            }
+            // Regular text
+            return part;
+        });
+    };
 
     return (
         <div className="flex flex-col gap-4">
@@ -45,15 +71,21 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                     if (isGroup) {
                         // For sent group messages we do not show the sender name.
                         return (
-                            <div key={idx} className="flex items-end gap-3 justify-end">
-                                <div className="flex flex-col gap-1 items-end group relative">
-                                    <div className="rounded-xl rounded-br-none bg-[#0e5555] p-3 text-white max-w-xl shadow-sm relative">
-                                        <p className="text-sm">{content}</p>
+                            <div key={idx} className="flex items-end gap-3 justify-end group">
+                                <div className="flex flex-col gap-1 items-end group/message relative">
+                                    <div className="rounded-2xl rounded-br-md bg-gradient-to-br from-blue-500/90 to-blue-600/90 backdrop-blur-sm p-4 text-white max-w-xl shadow-xl border border-white/20 hover:shadow-2xl hover:shadow-blue-500/20 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-600 ease-out group-hover/message:shadow-2xl group-hover/message:shadow-blue-500/30">
+                                        <p className="text-sm drop-shadow-sm group-hover/message:scale-105 transition-transform duration-300">{renderMessageWithMentions(content)}</p>
                                     </div>
-                                    <span className="text-xs text-gray-400 dark:text-gray-500 flex gap-2">{ts ? new Date(ts).toLocaleTimeString() : ''} 
-                                        {read ? <RiCheckDoubleLine className="material-symbols-outlined text-sm text-[#137fec]"/> : null} </span>
-                                    <button onClick={() => onForward(m)} title="Forward message" className="absolute -left-8 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-200">
-                                        <FiShare2 />
+                                    <span className="text-xs text-white/60 flex gap-2 drop-shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                                        {ts ? new Date(ts).toLocaleTimeString() : ''}
+                                        {read ? <RiCheckDoubleLine className="text-sm text-blue-300 drop-shadow-sm animate-pulse"/> : null}
+                                    </span>
+                                    <button
+                                        onClick={() => onForward(m)}
+                                        title="Forward message"
+                                        className="absolute -left-10 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-600 ease-out text-white/60 hover:text-white hover:scale-125 hover:rotate-12 p-2 rounded-full bg-black/20 backdrop-blur-sm border border-white/10 hover:shadow-lg hover:shadow-white/20"
+                                    >
+                                        <FiShare2 size={16} />
                                     </button>
                                 </div>
                             </div>
@@ -61,13 +93,22 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                     }
 
                     return (
-                        <div key={idx} className="flex items-end gap-3 justify-end">
-                            <div className="flex flex-col gap-1 items-end">
-                                <div className="rounded-xl rounded-br-none bg-[#0e5555] p-3 text-white max-w-xl shadow-sm">
-                                    <p className="text-sm">{content}</p>
+                        <div key={idx} className="flex items-end gap-3 justify-end group">
+                            <div className="flex flex-col gap-1 items-end group/message relative">
+                                <div className="rounded-2xl rounded-br-md bg-gradient-to-br from-blue-500/90 to-blue-600/90 backdrop-blur-sm p-4 text-white max-w-xl shadow-xl border border-white/20 hover:shadow-2xl hover:shadow-blue-500/20 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-600 ease-out group-hover/message:shadow-2xl group-hover/message:shadow-blue-500/30">
+                                    <p className="text-sm drop-shadow-sm group-hover/message:scale-105 transition-transform duration-300">{renderMessageWithMentions(content)}</p>
                                 </div>
-                                <span className="text-xs text-gray-400 dark:text-gray-500 flex gap-2">{ts ? new Date(ts).toLocaleTimeString() : ''} 
-                                    {read ? <RiCheckDoubleLine className="material-symbols-outlined text-sm text-[#137fec]"/> : null} </span> 
+                                <span className="text-xs text-white/60 flex gap-2 drop-shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                                    {ts ? new Date(ts).toLocaleTimeString() : ''}
+                                    {read ? <RiCheckDoubleLine className="text-sm text-blue-300 drop-shadow-sm animate-pulse"/> : null}
+                                </span>
+                                <button
+                                    onClick={() => onForward(m)}
+                                    title="Forward message"
+                                    className="absolute -left-10 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-600 ease-out text-white/60 hover:text-white hover:scale-125 hover:rotate-12 p-2 rounded-full bg-black/20 backdrop-blur-sm border border-white/10 hover:shadow-lg hover:shadow-white/20"
+                                >
+                                    <FiShare2 size={16} />
+                                </button>
                             </div>
                         </div>
                     );
@@ -84,15 +125,19 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                         }
                         const showName = type !== 'sent' && (!prevSenderKey || String(prevSenderKey) !== String(senderIdKey));
                         return (
-                            <div key={idx} className="flex items-start gap-3 max-w-xl">
-                                <div className="flex flex-col gap-1 relative group">
-                                    {showName ? <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">{senderDisplayName}</div> : null}
-                                    <div className="rounded-xl rounded-bl-none bg-white dark:bg-gray-700 p-3 shadow-sm relative">
-                                        <p className="text-sm text-gray-800 dark:text-gray-200">{content}</p>
+                            <div key={idx} className="flex items-start gap-3 max-w-xl group">
+                                <div className="flex flex-col gap-1 relative group/message">
+                                    {showName ? <div className="text-xs font-semibold text-white/80 drop-shadow-sm ml-4 opacity-0 group-hover:opacity-100 transition-opacity duration-500">{senderDisplayName}</div> : null}
+                                    <div className="rounded-2xl rounded-bl-md bg-white/12 backdrop-blur-sm p-4 shadow-xl border border-white/10 hover:shadow-2xl hover:shadow-white/10 hover:scale-[1.02] hover:translate-y-0.5 transition-all duration-600 ease-out relative group-hover/message:shadow-2xl group-hover/message:shadow-white/20">
+                                        <p className="text-sm text-white drop-shadow-sm group-hover/message:scale-105 transition-transform duration-300">{renderMessageWithMentions(content)}</p>
                                     </div>
-                                    <span className="text-xs text-gray-400 dark:text-gray-500">{ts ? new Date(ts).toLocaleTimeString() : ''}</span>
-                                    <button onClick={() => onForward(m)} title="Forward message" className="absolute -right-8 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600">
-                                        <FiShare2 />
+                                    <span className="text-xs text-white/60 drop-shadow-sm ml-4 opacity-0 group-hover:opacity-100 transition-opacity duration-500">{ts ? new Date(ts).toLocaleTimeString() : ''}</span>
+                                    <button
+                                        onClick={() => onForward(m)}
+                                        title="Forward message"
+                                        className="absolute -right-10 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-600 ease-out text-white/60 hover:text-white hover:scale-125 hover:-rotate-12 p-2 rounded-full bg-black/20 backdrop-blur-sm border border-white/10 hover:shadow-lg hover:shadow-white/20"
+                                    >
+                                        <FiShare2 size={16} />
                                     </button>
                                 </div>
                             </div>
@@ -100,15 +145,25 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                     }
 
                     return (
-                        <div key={idx} className="flex items-start gap-3 max-w-xl">
-                            <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-8 h-8 shrink-0" style={{backgroundImage: messageAvatar ? `url('${messageAvatar}')` : `url('https://placehold.co/8')`}}></div>
-                            <div className="flex flex-col gap-1 relative group">
-                                <div className="rounded-xl rounded-bl-none bg-white dark:bg-gray-700 p-3 shadow-sm relative">
-                                    <p className="text-sm text-gray-800 dark:text-gray-200">{content}</p>
+                        <div key={idx} className="flex items-start gap-3 max-w-xl group">
+                            <div className="relative group/avatar">
+                                <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/15 rounded-full blur-sm group-hover/avatar:blur-lg group-hover/avatar:scale-110 transition-all duration-700 ease-out"></div>
+                                <div
+                                    className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-10 h-10 shrink-0 border-2 border-white/20 shadow-lg hover:shadow-2xl hover:shadow-white/20 hover:scale-110 hover:rotate-6 transition-all duration-700 ease-out relative z-10 group-hover/avatar:brightness-110"
+                                    style={{backgroundImage: messageAvatar ? `url('${messageAvatar}')` : `url('https://placehold.co/10')`}}
+                                ></div>
+                            </div>
+                            <div className="flex flex-col gap-1 relative group/message">
+                                <div className="rounded-2xl rounded-bl-md bg-white/12 backdrop-blur-sm p-4 shadow-xl border border-white/10 hover:shadow-2xl hover:shadow-white/10 hover:scale-[1.02] hover:translate-y-0.5 transition-all duration-600 ease-out relative group-hover/message:shadow-2xl group-hover/message:shadow-white/20">
+                                    <p className="text-sm text-white drop-shadow-sm group-hover/message:scale-105 transition-transform duration-300">{renderMessageWithMentions(content)}</p>
                                 </div>
-                                <span className="text-xs text-gray-400 dark:text-gray-500">{ts ? new Date(ts).toLocaleTimeString() : ''}</span>
-                                <button onClick={() => onForward(m)} title="Forward message" className="absolute -right-8 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600">
-                                    <FiShare2 />
+                                <span className="text-xs text-white/60 drop-shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-500">{ts ? new Date(ts).toLocaleTimeString() : ''}</span>
+                                <button
+                                    onClick={() => onForward(m)}
+                                    title="Forward message"
+                                    className="absolute -right-10 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all duration-600 ease-out text-white/60 hover:text-white hover:scale-125 hover:-rotate-12 p-2 rounded-full bg-black/20 backdrop-blur-sm border border-white/10 hover:shadow-lg hover:shadow-white/20"
+                                >
+                                    <FiShare2 size={16} />
                                 </button>
                             </div>
                         </div>

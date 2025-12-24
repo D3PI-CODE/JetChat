@@ -13,6 +13,12 @@ export default function useChatSocket({ url = 'http://localhost:5002', token, us
     socket.auth = { token, userID, email };
     socket.connect();
 
+    socket.on('connect', () => {
+      console.log('Socket connected:', socket.id, 'auth:', socket.auth);
+    });
+    socket.on('disconnect', (reason) => {
+      console.warn('Socket disconnected:', reason);
+    });
     socket.on('connect_error', (err) => { console.error('Socket connect_error:', err); });
     socket.on('connect_timeout', (t) => { console.warn('Socket connect_timeout:', t); });
     socket.on('error', (err) => { console.error('Socket error:', err); });

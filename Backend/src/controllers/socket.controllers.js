@@ -171,6 +171,27 @@ export const connection =  async (socket) => {
         }
     });
     
+    // Message send handler - persist and route messages
+    socket.on('sendMessage', async (data) => {
+        try {
+            console.log('sendMessage event received from socket', socket.id, 'payload:', { groupID: data?.groupID, from: data?.fromEmail, to: data?.toEmail });
+            await sendMessage(socket, data);
+        } catch (err) {
+            console.error('Error handling sendMessage event:', err && err.message);
+            try { socket.emit('sendMessageError', { error: err && err.message || 'sendMessage failed' }); } catch (e) {}
+        }
+    });
+
+    // Mark-as-read handler - update DB and notify peers
+    socket.on('markAsRead', async (data) => {
+        try {
+            await markAsRead(data);
+        } catch (err) {
+            console.error('Error handling markAsRead event:', err && err.message);
+            try { socket.emit('markAsReadError', { error: err && err.message || 'markAsRead failed' }); } catch (e) {}
+        }
+    });
+    
     
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {

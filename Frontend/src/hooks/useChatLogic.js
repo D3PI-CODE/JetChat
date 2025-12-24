@@ -13,7 +13,7 @@ import {
     changeProfilePicApi,
     changeGroupAvatarApi
 } from '@/Services/api';
-import { uploadToCloudinary } from '@/Services/cloudinaryUpload';
+import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
 
 export const useChatLogic = () => {
     // --- State ---
@@ -252,6 +252,10 @@ export const useChatLogic = () => {
              if (data.email === myEmail) setProfileImage(data.avatarUrl);
         });
 
+        socket.on('sendMessageError', (err) => {
+            console.error('sendMessageError from server:', err);
+        });
+
         socket.on('changeGroupAvatarSuccess', (data) => {
             const { groupID, newAvatarUrl, groupAvatar } = data || {};
             const url = groupAvatar || newAvatarUrl;
@@ -368,7 +372,7 @@ export const useChatLogic = () => {
     const sendMessage = () => {
         const text = message.trim();
         if (!text || !activeChat) return;
-
+        const socket = socketRef.current;
         const payload = {
             message: text,
             fromUserId: myUserID,
@@ -380,20 +384,54 @@ export const useChatLogic = () => {
             type: 'sent',
         };
 
+        // Log and guard: ensure socket exists and is connected
+        try {
+            console.log('Attempting to send message, socket present:', !!socket, 'socket.connected:', socket?.connected);
+        } catch (e) {
+            console.warn('Socket presence check failed', e && e.message);
+        }
+
         // Handle Mention Logic
         if (activeChat.group && text.split(" ").pop().startsWith("@")) {
             const mentionText = text.split(" ").pop().substring(1).toLowerCase();
             const members = groupMembersMap[activeChat.groupID] || [];
             const targeted = members.find(m => m.email !== myEmail && (m.name || m.username || '').toLowerCase() === mentionText);
             if (targeted) {
-                 socketRef.current.emit('mentionUser', { 
+                 try { socket?.emit('mentionUser', { 
                      groupID: activeChat.groupID, mentionedEmail: targeted.email, mentionedID: targeted.id, 
                      fromEmail: myEmail, fromID: myUserID, messageContent: text 
-                 });
+                 }); } catch (e) { console.warn('mentionUser emit failed', e && e.message); }
             }
         }
 
-        socketRef.current.emit('sendMessage', payload);
+        if (!socket) {
+            console.error('No socket available — message not sent');
+            return;
+        }
+
+        if (!socket.connected) {
+            console.warn('Socket not connected; attempting to connect and queue send');
+            try {
+                socket.connect();
+            } catch (e) { console.warn('socket.connect() threw', e && e.message); }
+            // emit after connect
+            socket.once('connect', () => {
+                try {
+                    console.log('Socket connected (after reconnect) — emitting sendMessage', payload);
+                    socket.emit('sendMessage', payload);
+                } catch (e) {
+                    console.error('sendMessage emit failed after reconnect', e && e.message);
+                }
+            });
+        } else {
+            try {
+                console.log('Emitting sendMessage', payload);
+                socket.emit('sendMessage', payload);
+            } catch (e) {
+                console.error('sendMessage emit failed', e && e.message);
+            }
+        }
+
         setMessage('');
     };
 

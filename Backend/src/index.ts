@@ -36,8 +36,8 @@ io.use(socketAuth);
 io.on("connection", connection);
 
 //initialize databases
-export const credentialsDB = await initializeCredentialsDB();
-export const messagingDB = await initializeMessagingDB();
+export const credentialsDB = initializeCredentialsDB();
+export const messagingDB = initializeMessagingDB();
 
 // Ensure DB models are synced before starting the HTTP server
 const userAuthModel = new UserAuthModel(credentialsDB);
