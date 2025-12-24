@@ -1,31 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import Textbubble from '../components/Textbubble';
-import MentionDropdown from './MentionDropdown';
 
 export default function ChatWindow({
     activeChat, messages, messageInput, users, groupMembersMap, typingText,
     textPanelRef, onInputChange, onSendMessage, onChangeGroupAvatar, onOpenMembers, onForward
 }) {
-    // Mention functionality state - must be before any early returns
-    const [showMentionDropdown, setShowMentionDropdown] = useState(false);
-    const [mentionQuery, setMentionQuery] = useState('');
-    const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
-    const inputRef = useRef(null);
-
-    // Handle keyboard navigation in dropdown - must be before early return
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (!showMentionDropdown) return;
-
-            if (e.key === 'Escape') {
-                setShowMentionDropdown(false);
-            }
-        };
-
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [showMentionDropdown]);
-
     if (!activeChat) return <div className="flex h-screen flex-1 bg-transparent"></div>;
 
     const handleAvatarClick = () => {
@@ -35,118 +14,6 @@ export default function ChatWindow({
         tmp.type = 'file'; tmp.accept = 'image/*';
         tmp.onchange = (e) => onChangeGroupAvatar(e, true);
         tmp.click();
-    };
-
-    // Get mentionable users based on chat type
-    const getMentionableUsers = () => {
-        if (!activeChat) return [];
-
-        if (activeChat.group) {
-            // For group chats, get all group members
-            const gid = activeChat.groupID || activeChat.userID;
-            const members = groupMembersMap[gid] || groupMembersMap[String(gid)] || [];
-            return members.map(member => ({
-                ...member,
-                username: member.name,
-                online: member.online || false
-            }));
-        } else {
-            // For direct chats, return the other user
-            return [activeChat].map(user => ({
-                ...user,
-                username: user.username,
-                online: user.online || false
-            }));
-        }
-    };
-
-    // Handle input changes with mention detection
-    const handleInputChange = (e) => {
-        const value = e.target.value;
-        const cursorPosition = e.target.selectionStart;
-
-        // Check for @ symbol before cursor
-        const textBeforeCursor = value.substring(0, cursorPosition);
-        const atIndex = textBeforeCursor.lastIndexOf('@');
-
-        if (atIndex !== -1 && atIndex === textBeforeCursor.length - 1) {
-            // @ is at the end of text before cursor, show dropdown
-            const mentionableUsers = getMentionableUsers();
-            if (mentionableUsers.length > 0) {
-                setShowMentionDropdown(true);
-                setMentionQuery('');
-                updateDropdownPosition();
-            }
-        } else if (atIndex !== -1) {
-            // There's text after @, extract query
-            const query = textBeforeCursor.substring(atIndex + 1);
-            if (query.length > 0 && !query.includes(' ')) {
-                setShowMentionDropdown(true);
-                setMentionQuery(query);
-                updateDropdownPosition();
-            } else {
-                setShowMentionDropdown(false);
-            }
-        } else {
-            setShowMentionDropdown(false);
-        }
-
-        // Call original onChange - pass the event with updated value
-        const syntheticEvent = {
-            ...e,
-            target: {
-                ...e.target,
-                value: value
-            }
-        };
-        onInputChange(syntheticEvent);
-    };
-
-    // Update dropdown position based on input cursor
-    const updateDropdownPosition = () => {
-        if (inputRef.current) {
-            const rect = inputRef.current.getBoundingClientRect();
-
-            setDropdownPosition({
-                top: rect.top - 280, // Position above the input with some space
-                left: rect.left
-            });
-        }
-    };
-
-    // Handle user selection from mention dropdown
-    const handleMentionSelect = (user) => {
-        const cursorPosition = inputRef.current?.selectionStart || messageInput.length;
-        const textBeforeCursor = messageInput.substring(0, cursorPosition);
-        const atIndex = textBeforeCursor.lastIndexOf('@');
-
-        if (atIndex !== -1) {
-            // Replace @query with @username
-            const textAfterCursor = messageInput.substring(cursorPosition);
-            const newText = textBeforeCursor.substring(0, atIndex) + `@${user.username} ` + textAfterCursor;
-
-            // Create synthetic event for onInputChange
-            const syntheticEvent = {
-                target: {
-                    value: newText,
-                    selectionStart: atIndex + user.username.length + 2 // +2 for @ and space
-                }
-            };
-
-            onInputChange(syntheticEvent);
-            setShowMentionDropdown(false);
-
-            // Focus back on input and set cursor position
-            setTimeout(() => {
-                if (inputRef.current) {
-                    inputRef.current.focus();
-                    inputRef.current.setSelectionRange(
-                        atIndex + user.username.length + 2,
-                        atIndex + user.username.length + 2
-                    );
-                }
-            }, 0);
-        }
     };
 
 
@@ -190,23 +57,11 @@ export default function ChatWindow({
             <footer className="bg-black/15 backdrop-blur-2xl p-4 border-t border-white/5 shadow-lg">
                 <form className='flex w-full gap-3' onSubmit={(e) => { e.preventDefault(); onSendMessage(); }}>
                     <input
-                        ref={inputRef}
                         className="flex-1 rounded-xl bg-white/8 backdrop-blur-md border border-white/10 px-4 py-3 text-sm text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/30 transition-all duration-500 shadow-lg hover:shadow-xl focus:shadow-2xl focus:shadow-blue-500/20"
                         placeholder="Type a message..."
                         value={messageInput}
-                        onChange={handleInputChange}
+                        onChange={onInputChange}
                     />
-
-                    {/* Mention Dropdown */}
-                    {showMentionDropdown && (
-                        <MentionDropdown
-                            users={getMentionableUsers()}
-                            query={mentionQuery}
-                            position={dropdownPosition}
-                            onSelect={handleMentionSelect}
-                            onClose={() => setShowMentionDropdown(false)}
-                        />
-                    )}
                     <button
                         className="text-white bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-xl text-sm p-2.5 shadow-lg hover:shadow-2xl hover:shadow-blue-500/30 hover:scale-110 hover:rotate-12 transition-all duration-600 ease-out border border-white/10 group relative overflow-hidden"
                         type='submit'

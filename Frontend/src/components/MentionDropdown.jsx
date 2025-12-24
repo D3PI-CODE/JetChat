@@ -5,9 +5,13 @@ export default function MentionDropdown({
     query = '',
     position = { top: 0, left: 0 },
     onSelect,
-    onClose
 }) {
-    if (!users.length) return null;
+    console.log('MentionDropdown render:', { users, query, position });
+
+    if (!users.length) {
+        console.log('No users provided to MentionDropdown');
+        return null;
+    }
 
     // Filter users based on query
     const filteredUsers = users.filter(user =>
@@ -15,15 +19,21 @@ export default function MentionDropdown({
         user.email?.toLowerCase().includes(query.toLowerCase())
     ).slice(0, 5); // Limit to 5 results
 
-    if (!filteredUsers.length) return null;
+    console.log('Filtered users:', filteredUsers);
+
+    if (!filteredUsers.length) {
+        console.log('No filtered users found');
+        return null;
+    }
 
     return (
         <div
-            className="fixed z-50 bg-black/25 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 max-w-xs w-64 animate-modal-slide-up transform-gpu"
+            className="fixed bg-black/25 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 max-w-xs w-64 animate-modal-slide-up transform-gpu"
             style={{
                 top: `${position.top}px`,
                 left: `${position.left}px`,
-                transform: 'translateY(-4px)'
+                transform: 'translateY(-4px)',
+                zIndex: 9999 // Very high z-index to ensure visibility
             }}
         >
             {/* Subtle inner glow */}
