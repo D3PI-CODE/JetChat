@@ -37,7 +37,7 @@ export default function MentionDropdown({
             }}
         >
             {/* Subtle inner glow */}
-            <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent rounded-2xl"></div>
+            <div className="absolute inset-0 bg-linear-to-br from-white/5 to-transparent rounded-2xl"></div>
 
             <div className="relative z-10 p-2 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
                 {filteredUsers.map((user, index) => (
@@ -47,8 +47,8 @@ export default function MentionDropdown({
                         className="w-full flex items-center gap-3 p-3 hover:bg-white/10 rounded-xl transition-all duration-300 group text-left"
                     >
                         {/* Avatar */}
-                        <div className="flex-shrink-0 relative">
-                            <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-white/5 rounded-full blur-sm group-hover:blur-md transition-all duration-300"></div>
+                        <div className="shrink-0 relative">
+                            <div className="absolute inset-0 bg-linear-to-br from-white/20 to-white/5 rounded-full blur-sm group-hover:blur-md transition-all duration-300"></div>
                             <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-xs text-white font-semibold border border-white/20 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 relative z-10">
                                 {(user.username || user.email || 'U').charAt(0).toUpperCase()}
                             </div>
@@ -66,7 +66,7 @@ export default function MentionDropdown({
 
                         {/* Online status indicator */}
                         {user.online !== undefined && (
-                            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${
                                 user.online ? 'bg-green-400 shadow-lg shadow-green-400/50' : 'bg-white/40'
                             }`}></div>
                         )}
@@ -75,7 +75,7 @@ export default function MentionDropdown({
             </div>
 
             {/* Bottom fade */}
-            <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-black/25 to-transparent rounded-b-2xl pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 right-0 h-4 bg-linear-to-t from-black/25 to-transparent rounded-b-2xl pointer-events-none"></div>
         </div>
     );
 }

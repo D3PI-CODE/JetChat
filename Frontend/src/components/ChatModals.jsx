@@ -36,28 +36,28 @@ export const GroupModals = ({ state, actions }) => {
                             {myRole && (
                                 <button
                                     onClick={() => actions.toggleModal('addMembers', true)}
-                                    className="p-2.5 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl shadow-lg hover:shadow-2xl hover:shadow-blue-500/30 hover:scale-110 hover:rotate-6 transition-all duration-600 ease-out group relative overflow-hidden"
+                                    className="p-2.5 bg-linear-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl shadow-lg hover:shadow-2xl hover:shadow-blue-500/30 hover:scale-110 hover:rotate-6 transition-all duration-600 ease-out group relative overflow-hidden"
                                 >
                                     <MdGroupAdd size={16} className="group-hover:scale-110 transition-transform duration-300" />
-                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out"></div>
+                                    <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out"></div>
                                 </button>
                             )}
                             {isAdmin && (
                                 <button
                                     onClick={() => actions.toggleModal('renameGroup', true)}
-                                    className="p-2.5 bg-gradient-to-br from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white rounded-xl shadow-lg hover:shadow-2xl hover:shadow-gray-500/30 hover:scale-110 hover:rotate-6 transition-all duration-600 ease-out group relative overflow-hidden"
+                                    className="p-2.5 bg-linear-to-br from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white rounded-xl shadow-lg hover:shadow-2xl hover:shadow-gray-500/30 hover:scale-110 hover:rotate-6 transition-all duration-600 ease-out group relative overflow-hidden"
                                 >
                                     <MdDriveFileRenameOutline size={16} className="group-hover:scale-110 transition-transform duration-300" />
-                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out"></div>
+                                    <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out"></div>
                                 </button>
                             )}
                             {isOwner && (
                                 <button
                                     onClick={() => actions.toggleModal('confirmDeleteGroup', true)}
-                                    className="p-2.5 bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-lg hover:shadow-2xl hover:shadow-red-500/30 hover:scale-110 hover:-rotate-6 transition-all duration-600 ease-out group relative overflow-hidden"
+                                    className="p-2.5 bg-linear-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-lg hover:shadow-2xl hover:shadow-red-500/30 hover:scale-110 hover:-rotate-6 transition-all duration-600 ease-out group relative overflow-hidden"
                                 >
                                     <MdOutlineDeleteOutline size={16} className="group-hover:scale-110 transition-transform duration-300" />
-                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out"></div>
+                                    <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out"></div>
                                 </button>
                             )}
                         </div>
@@ -80,7 +80,7 @@ export const GroupModals = ({ state, actions }) => {
                                                      <select
                                                         value={m.role || 'member'}
                                                         onChange={(e) => actions.changeRole(m, e.target.value)}
-                                                        className="text-xs bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-lg px-3 py-1 border border-white/20 shadow-sm hover:shadow-md transition-all duration-300"
+                                                        className="text-xs bg-linear-to-br from-blue-500 to-blue-600 text-white rounded-lg px-3 py-1 border border-white/20 shadow-sm hover:shadow-md transition-all duration-300"
                                                      >
                                                          <option value="admin">admin</option>
                                                          <option value="member">member</option>
@@ -105,7 +105,7 @@ export const GroupModals = ({ state, actions }) => {
                         <div className='flex justify-end mt-6'>
                             <button
                                 onClick={actions.leaveGroup}
-                                className="px-4 py-2 bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300"
+                                className="px-4 py-2 bg-linear-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300"
                             >
                                 <MdExitToApp size={18} className="mr-2" />
                                 Leave Group
@@ -143,7 +143,7 @@ export const GroupModals = ({ state, actions }) => {
                                 }} className="flex items-center justify-between p-3 hover:bg-white/5 rounded-xl cursor-pointer transition-all duration-300 group">
                                     <div className="flex items-center gap-3">
                                         <div className="relative">
-                                            <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-white/10 rounded-full blur-sm group-hover:blur-md transition-all duration-300"></div>
+                                            <div className="absolute inset-0 bg-linear-to-br from-white/30 to-white/10 rounded-full blur-sm group-hover:blur-md transition-all duration-300"></div>
                                             <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-sm text-white font-semibold border border-white/20 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 relative z-10">
                                                 {(u.username || u.email || '').slice(0,1).toUpperCase()}
                                             </div>
@@ -180,7 +180,7 @@ export const GroupModals = ({ state, actions }) => {
                                     disabled={!((selectedToAdd || []).length)}
                                     className={`px-4 py-2 rounded-xl text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 border border-white/20 ${
                                         ((selectedToAdd || []).length)
-                                            ? 'bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
+                                            ? 'bg-linear-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
                                             : 'bg-white/10 cursor-not-allowed opacity-50'
                                     }`}
                                 >
@@ -226,7 +226,7 @@ export const GroupModals = ({ state, actions }) => {
                             </button>
                             <button
                                 type="submit"
-                                className="px-4 py-2 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 border border-white/20"
+                                className="px-4 py-2 bg-linear-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 border border-white/20"
                             >
                                 Create Group
                             </button>
@@ -271,7 +271,7 @@ export const GroupModals = ({ state, actions }) => {
                             </button>
                             <button
                                 type="submit"
-                                className="px-4 py-2 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 border border-white/20"
+                                className="px-4 py-2 bg-linear-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 border border-white/20"
                             >
                                 Save Changes
                             </button>
@@ -329,7 +329,7 @@ export const GroupModals = ({ state, actions }) => {
                                     actions.deleteGroup();
                                     actions.toggleModal('confirmDeleteGroup', false);
                                 }}
-                                className="px-4 py-2 bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 border border-red-500/20"
+                                className="px-4 py-2 bg-linear-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 border border-red-500/20"
                             >
                                 Delete Group
                             </button>
@@ -384,7 +384,7 @@ export const ForwardModal = ({ chats, onClose, forwardingMessage, actions }) => 
                          <div key={c.group ? `g-${c.groupID}` : `u-${c.userID || c.email}`} className="flex items-center justify-between p-3 hover:bg-white/5 rounded-xl cursor-pointer transition-all duration-300 group">
                              <div className="flex items-center gap-3">
                                  <div className="relative">
-                                     <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-white/10 rounded-full blur-sm group-hover:blur-md transition-all duration-300"></div>
+                                     <div className="absolute inset-0 bg-linear-to-br from-white/30 to-white/10 rounded-full blur-sm group-hover:blur-md transition-all duration-300"></div>
                                      <div
                                          className="w-10 h-10 rounded-full bg-white/20 border border-white/20 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 relative z-10 bg-center bg-cover"
                                          style={{ backgroundImage: `url(${c.group ? (c.groupAvatarUrl || '') : (c.avatarUrl || '')})` }}
@@ -398,7 +398,7 @@ export const ForwardModal = ({ chats, onClose, forwardingMessage, actions }) => 
                              <div className="flex gap-2">
                                  <button
                                      onClick={() => handleForwardTo(c)}
-                                     className="px-4 py-2 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 border border-white/20"
+                                     className="px-4 py-2 bg-linear-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 border border-white/20"
                                  >
                                      Forward
                                  </button>

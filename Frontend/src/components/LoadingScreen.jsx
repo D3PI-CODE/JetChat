@@ -2,17 +2,17 @@ import React from 'react';
 
 export default function LoadingScreen({ message = "Loading..." }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-[#0a0e0e] via-[#0f1414] to-[#0a0e0e] font-['Inter','system-ui','-apple-system','sans-serif'] text-white overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-linear-to-br from-[#0a0e0e] via-[#0f1414] to-[#0a0e0e] font-['Inter','system-ui','-apple-system','sans-serif'] text-white overflow-hidden">
       {/* Extremely dynamic animated background */}
       <div className="absolute inset-0">
         {/* Large floating orbs */}
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-blue-500/15 to-purple-500/15 rounded-full blur-3xl animate-float-slow"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-gradient-to-r from-cyan-500/15 to-blue-500/15 rounded-full blur-3xl animate-float-reverse animation-delay-2000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-gradient-to-r from-white/8 to-transparent rounded-full blur-2xl animate-morph"></div>
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-linear-to-r from-blue-500/15 to-purple-500/15 rounded-full blur-3xl animate-float-slow"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-linear-to-r from-cyan-500/15 to-blue-500/15 rounded-full blur-3xl animate-float-reverse animation-delay-2000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-linear-to-r from-white/8 to-transparent rounded-full blur-2xl animate-morph"></div>
 
         {/* Smaller floating elements */}
-        <div className="absolute top-1/3 right-1/3 w-32 h-32 bg-gradient-to-r from-pink-500/10 to-purple-500/10 rounded-full blur-xl animate-float-fast animation-delay-1000"></div>
-        <div className="absolute bottom-1/3 left-1/3 w-40 h-40 bg-gradient-to-r from-cyan-500/12 to-blue-500/12 rounded-full blur-2xl animate-float-reverse animation-delay-3000"></div>
+        <div className="absolute top-1/3 right-1/3 w-32 h-32 bg-linear-to-r from-pink-500/10 to-purple-500/10 rounded-full blur-xl animate-float-fast animation-delay-1000"></div>
+        <div className="absolute bottom-1/3 left-1/3 w-40 h-40 bg-linear-to-r from-cyan-500/12 to-blue-500/12 rounded-full blur-2xl animate-float-reverse animation-delay-3000"></div>
       </div>
 
       {/* Advanced particle system */}
@@ -47,7 +47,7 @@ export default function LoadingScreen({ message = "Loading..." }) {
             }}
           >
             <div
-              className="w-4 h-4 bg-gradient-to-br from-white/20 to-transparent"
+              className="w-4 h-4 bg-linear-to-br from-white/20 to-transparent"
               style={{
                 clipPath: `polygon(${Math.random() * 100}% ${Math.random() * 100}%, ${Math.random() * 100}% ${Math.random() * 100}%, ${Math.random() * 100}% ${Math.random() * 100}%)`
               }}
@@ -75,9 +75,9 @@ export default function LoadingScreen({ message = "Loading..." }) {
       {/* Main Loading Card with extreme dynamism */}
       <div className="relative z-10 bg-black/30 backdrop-blur-3xl rounded-3xl p-16 shadow-2xl border border-white/20 max-w-2xl w-full mx-4 animate-card-entrance">
         {/* Ultra-layered glass effects */}
-        <div className="absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-white/8 rounded-3xl animate-glass-shimmer"></div>
-        <div className="absolute inset-0 bg-gradient-to-tl from-blue-500/8 via-transparent to-purple-500/8 rounded-3xl animate-glass-shimmer animation-delay-1000"></div>
-        <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/6 via-transparent to-pink-500/6 rounded-3xl animate-glass-shimmer animation-delay-2000"></div>
+        <div className="absolute inset-0 bg-linear-to-br from-white/15 via-transparent to-white/8 rounded-3xl animate-glass-shimmer"></div>
+        <div className="absolute inset-0 bg-linear-to-tl from-blue-500/8 via-transparent to-purple-500/8 rounded-3xl animate-glass-shimmer animation-delay-1000"></div>
+        <div className="absolute inset-0 bg-linear-to-tr from-cyan-500/6 via-transparent to-pink-500/6 rounded-3xl animate-glass-shimmer animation-delay-2000"></div>
 
         {/* Dynamic animated borders */}
         <div className="absolute inset-0 rounded-3xl border border-white/30 animate-border-glow"></div>
@@ -101,12 +101,12 @@ export default function LoadingScreen({ message = "Loading..." }) {
             <div className="absolute inset-16 flex items-center justify-center">
               <div className="relative w-8 h-8">
                 {/* Rotating squares */}
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-400/30 to-cyan-400/30 animate-morph-square"></div>
-                <div className="absolute inset-0 bg-gradient-to-br from-purple-400/30 to-pink-400/30 animate-morph-square animation-delay-1000 animation-reverse"></div>
+                <div className="absolute inset-0 bg-linear-to-br from-blue-400/30 to-cyan-400/30 animate-morph-square"></div>
+                <div className="absolute inset-0 bg-linear-to-br from-purple-400/30 to-pink-400/30 animate-morph-square animation-delay-1000 animation-reverse"></div>
 
                 {/* Pulsing circles */}
-                <div className="absolute inset-1 bg-gradient-to-br from-white/40 to-blue-400/40 rounded-full animate-pulse-core"></div>
-                <div className="absolute inset-2 bg-gradient-to-br from-white/50 to-cyan-400/50 rounded-full animate-pulse-core animation-delay-500"></div>
+                <div className="absolute inset-1 bg-linear-to-br from-white/40 to-blue-400/40 rounded-full animate-pulse-core"></div>
+                <div className="absolute inset-2 bg-linear-to-br from-white/50 to-cyan-400/50 rounded-full animate-pulse-core animation-delay-500"></div>
               </div>
             </div>
 
@@ -131,7 +131,7 @@ export default function LoadingScreen({ message = "Loading..." }) {
 
           {/* Ultra-dynamic message display */}
           <div className="text-center space-y-6">
-            <h3 className="text-3xl font-bold bg-gradient-to-r from-white via-blue-100 to-cyan-100 bg-clip-text text-transparent animate-text-shimmer drop-shadow-2xl">
+            <h3 className="text-3xl font-bold bg-linear-to-r from-white via-blue-100 to-cyan-100 bg-clip-text text-transparent animate-text-shimmer drop-shadow-2xl">
               {message}
             </h3>
 
@@ -142,7 +142,7 @@ export default function LoadingScreen({ message = "Loading..." }) {
                 {[...Array(7)].map((_, i) => (
                   <div
                     key={i}
-                    className="w-1.5 bg-gradient-to-t from-blue-400 via-cyan-400 to-white rounded-full animate-wave-liquid"
+                    className="w-1.5 bg-linear-to-t from-blue-400 via-cyan-400 to-white rounded-full animate-wave-liquid"
                     style={{
                       height: `${25 + Math.sin(i * 0.8) * 15}px`,
                       animationDelay: `${i * 120}ms`,
@@ -163,7 +163,7 @@ export default function LoadingScreen({ message = "Loading..." }) {
                 {[...Array(4)].map((_, i) => (
                   <div
                     key={i}
-                    className="w-3 h-3 bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full animate-morph-dot"
+                    className="w-3 h-3 bg-linear-to-r from-blue-400 to-cyan-400 rounded-full animate-morph-dot"
                     style={{ animationDelay: `${i * 250}ms` }}
                   ></div>
                 ))}
@@ -174,7 +174,7 @@ export default function LoadingScreen({ message = "Loading..." }) {
           {/* Dynamic progress indicators */}
           <div className="w-full space-y-3">
             <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-blue-400/60 via-cyan-400/60 to-purple-400/60 animate-progress-fill rounded-full"></div>
+              <div className="h-full bg-linear-to-r from-blue-400/60 via-cyan-400/60 to-purple-400/60 animate-progress-fill rounded-full"></div>
             </div>
             <div className="flex justify-center space-x-1">
               {[...Array(8)].map((_, i) => (
@@ -189,21 +189,21 @@ export default function LoadingScreen({ message = "Loading..." }) {
         </div>
 
         {/* Ultra-floating accent elements */}
-        <div className="absolute -top-6 -right-6 w-12 h-12 bg-gradient-to-br from-blue-400/25 to-cyan-400/25 rounded-full animate-float-accent animation-delay-500"></div>
-        <div className="absolute -bottom-6 -left-6 w-10 h-10 bg-gradient-to-br from-purple-400/25 to-pink-400/25 rounded-full animate-float-accent animation-delay-1500"></div>
-        <div className="absolute top-1/4 -left-8 w-6 h-6 bg-gradient-to-br from-cyan-400/25 to-blue-400/25 rounded-full animate-float-accent animation-delay-2500"></div>
-        <div className="absolute bottom-1/4 -right-8 w-8 h-8 bg-gradient-to-br from-pink-400/25 to-purple-400/25 rounded-full animate-float-accent animation-delay-3500"></div>
+        <div className="absolute -top-6 -right-6 w-12 h-12 bg-linear-to-br from-blue-400/25 to-cyan-400/25 rounded-full animate-float-accent animation-delay-500"></div>
+        <div className="absolute -bottom-6 -left-6 w-10 h-10 bg-linear-to-br from-purple-400/25 to-pink-400/25 rounded-full animate-float-accent animation-delay-1500"></div>
+        <div className="absolute top-1/4 -left-8 w-6 h-6 bg-linear-to-br from-cyan-400/25 to-blue-400/25 rounded-full animate-float-accent animation-delay-2500"></div>
+        <div className="absolute bottom-1/4 -right-8 w-8 h-8 bg-linear-to-br from-pink-400/25 to-purple-400/25 rounded-full animate-float-accent animation-delay-3500"></div>
 
         {/* Energy streams */}
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-1/2 left-0 w-full h-px bg-gradient-to-r from-transparent via-blue-400/20 to-transparent animate-energy-stream"></div>
-          <div className="absolute top-1/2 right-0 w-full h-px bg-gradient-to-l from-transparent via-cyan-400/20 to-transparent animate-energy-stream animation-delay-2000"></div>
+          <div className="absolute top-1/2 left-0 w-full h-px bg-linear-to-r from-transparent via-blue-400/20 to-transparent animate-energy-stream"></div>
+          <div className="absolute top-1/2 right-0 w-full h-px bg-linear-to-l from-transparent via-cyan-400/20 to-transparent animate-energy-stream animation-delay-2000"></div>
         </div>
       </div>
 
       {/* Global dynamic effects */}
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/3 to-transparent animate-global-shimmer pointer-events-none"></div>
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-white/2 animate-global-fade pointer-events-none"></div>
+      <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/3 to-transparent animate-global-shimmer pointer-events-none"></div>
+      <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-white/2 animate-global-fade pointer-events-none"></div>
     </div>
   );
 }

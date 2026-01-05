@@ -23,7 +23,7 @@ export default function ChatWindow({
             <header className="flex shrink-0 items-center justify-between border-b border-white/5 bg-black/15 backdrop-blur-2xl px-6 py-4 shadow-lg">
                 <div className="flex items-center gap-4">
                     <div className="cursor-pointer group relative" onClick={handleAvatarClick}>
-                        <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-white/5 rounded-full blur-sm group-hover:blur-md transition-all duration-500"></div>
+                        <div className="absolute inset-0 bg-linear-to-br from-white/20 to-white/5 rounded-full blur-sm group-hover:blur-md transition-all duration-500"></div>
                         <div
                             className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-12 h-12 border border-white/10 shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-500 relative z-10"
                             style={{backgroundImage: activeChat.group ? `url('${activeChat.groupAvatarUrl || 'https://placehold.co/12'}')` : `url('${activeChat.avatarUrl || 'https://placehold.co/12'}')`}}
@@ -63,11 +63,11 @@ export default function ChatWindow({
                         onChange={onInputChange}
                     />
                     <button
-                        className="text-white bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-xl text-sm p-2.5 shadow-lg hover:shadow-2xl hover:shadow-blue-500/30 hover:scale-110 hover:rotate-12 transition-all duration-600 ease-out border border-white/10 group relative overflow-hidden"
+                        className="text-white bg-linear-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 rounded-xl text-sm p-2.5 shadow-lg hover:shadow-2xl hover:shadow-blue-500/30 hover:scale-110 hover:rotate-12 transition-all duration-600 ease-out border border-white/10 group relative overflow-hidden"
                         type='submit'
                     >
                         <span className="material-symbols-outlined text-base group-hover:scale-110 transition-transform duration-300">send</span>
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out"></div>
+                        <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 ease-out"></div>
                     </button>
                 </form>
             </footer>
