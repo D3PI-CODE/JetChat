@@ -28,22 +28,24 @@ export const login = async (req, res) => {
     console.log(`User IDs - CredsDB: ${credUserId}, MessagingDB: ${msgUserId}`);
     
     const userPass =  await userAuthModel.getPassword(credUserId);
+    const userStatus = await userAuthModel.getStatus(credUserId);
     const isPassValid = await bcrypt.compare(password, userPass);
     const JWT_SECRET = process.env.JWT_SECRET;
-    if (isPassValid) {
-        const user = { id: msgUserId, email: email };
-        const token = jwt.sign(user, JWT_SECRET);
-        res.json({
-            validCredentials: true,
-            token: token,
-            userId: msgUserId,
-            email: email,
-        });
-    } else {
-        res.json({
-            validCredentials: false,
-        });
+
+    if (!isPassValid) res.json({ validCredentials: false });
+    if (userStatus !== 'enabled') {
+        console.error('Attempt to login to a disabled account', { email, userId: credUserId });
+        return res.status(403).json({ validCredentials: false, error: 'Account is disabled' });
     }
+
+    const user = { id: msgUserId, email: email };
+    const token = jwt.sign(user, JWT_SECRET);
+    res.json({
+        validCredentials: true,
+        token: token,
+        userId: msgUserId,
+        email: email,
+    });
 }
 
 export const register = async (req, res) => {

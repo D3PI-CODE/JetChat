@@ -3,6 +3,10 @@ import express from 'express';
 import authRoutes from './routes/auth.routes.js';
 import messagingRoutes from './routes/messaging.routes.js';
 import cors from 'cors';
+import AdminJSPkg from 'adminjs'; 
+const AdminJS = (AdminJSPkg as any).default || AdminJSPkg;
+import AdminJSExpress from '@adminjs/express';
+import AdminJSSequelize from '@adminjs/sequelize';
 import { initializeCredentialsDB } from './config/CredentialsDB.js';
 import { UserAuthModel } from './models/userAuth.model.js';
 import { initializeMessagingDB } from './config/MessagingDB.js';
@@ -16,6 +20,7 @@ import { socketAuth } from './middleware/SocketAuth.js';
 import { GroupModel } from './models/Group.model.js';
 import { GroupMemberModel } from './models/groupMember.model.js';
 
+AdminJS.registerAdapter(AdminJSSequelize);
 const app = express();
 const server = http.createServer(app);
 export const io = new Server(server, {
@@ -47,12 +52,72 @@ const groupModel = new GroupModel(messagingDB);
 const groupMemberModel = new GroupMemberModel(messagingDB);
 // ensure DB schema updates (adds fields if missing)
 await userModel.sync({ alter: true });
-await userAuthModel.sync();
+await userAuthModel.sync({alter:true });
 await messageModel.sync({alter: true});
 await groupModel.sync({alter: true});
 await groupMemberModel.sync({alter: true});
 // Initialize Redis
 await redisInitialization();
+
+const admin = new AdminJS({
+  databases: [], 
+  resources: [
+    // --- 1. Credentials Users (Keep this CUSTOM) ---
+    {
+      resource: userAuthModel.getUserModel(),
+      options: {
+        id: 'auth-users', // <--- Unique ID to avoid conflict
+        navigation: { name: 'Credentials DB' },
+        properties: {
+          password: { isVisible: false }
+        }
+      }
+    },
+
+    // --- 2. Chat Users (Rename this back to DEFAULT) ---
+    {
+      resource: userModel.getUserModel(),
+      options: {
+        id: 'users', // <--- FIX: Name it 'users' so AdminJS can find it!
+        navigation: { name: 'Messaging DB' },
+      }
+    },
+
+    // --- 3. Groups ---
+    {
+      resource: groupModel.getGroupModel(),
+      options: { 
+        id: 'groups',
+        navigation: { name: 'Messaging DB' } 
+      }
+    },
+
+    // --- 4. Messages ---
+    {
+      resource: messageModel.getMessageModel(),
+      options: {
+        id: 'messages',
+        navigation: { name: 'Messaging DB' },
+        actions: { edit: { isAccessible: false } }
+        // Note: We don't need manual 'references' anymore because 
+        // AdminJS will automatically find the 'users' resource now.
+      }
+    },
+
+    // --- 5. Group Members ---
+    {
+      resource: groupMemberModel.getGroupMemberModel(),
+      options: { 
+        id: 'group_members',
+        navigation: { name: 'Messaging DB' }
+      }
+    }
+  ],
+  rootPath: '/admin',
+});
+
+const adminRouter = (AdminJSExpress as any).buildRouter(admin);
+app.use(admin.options.rootPath, adminRouter);
 
 
 server.listen(PORT, () => {

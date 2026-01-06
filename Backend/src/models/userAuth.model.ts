@@ -18,6 +18,10 @@ export const UserAuth = (sequelize: Sequelize.Sequelize) => {
                 allowNull: false,
                 unique: true,
             },
+            Status: {
+                type: Sequelize.STRING,
+                defaultValue: 'enabled',
+            },
         },
         {
             tableName: 'users',
@@ -74,6 +78,20 @@ class UserAuthModel {
                 });
 
     }
+    async getStatus(UserID: string): Promise<string | null> {
+        if (!UserID) {
+            console.warn('UserAuthModel.getStatus called with falsy UserID:', UserID);
+            return Promise.resolve(null);
+        }
+        return this.model.User.findOne({where: {id: UserID}})
+            .then(user => {
+                    if (!user) {
+                        return null
+                    }
+                    return user.getDataValue("Status");
+                });
+    }
+    
     async sync(options = {}) {
         await this.sequelize.sync(options);
     }
