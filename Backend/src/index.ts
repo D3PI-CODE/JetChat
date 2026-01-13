@@ -1,15 +1,20 @@
 import 'dotenv/config';
 import express from 'express';
-import routes from './routes/auth.routes.js';
+import authRoutes from './routes/auth.routes.js';
+import messagingRoutes from './routes/messaging.routes.js';
 import cors from 'cors';
-import { initializeCredentialsDB } from './lib/CredentialsDB.js';
+import { initializeCredentialsDB } from './config/CredentialsDB.js';
 import { UserAuthModel } from './models/userAuth.model.js';
-import { initializeMessagingDB } from './lib/MessagingDB.js';
+import { initializeMessagingDB } from './config/MessagingDB.js';
 import { UserModel } from './models/user.model.js';
 import {Server} from "socket.io";
 import http from "http";
 import { connection} from './controllers/socket.controllers.js';
 import { MessageModel } from './models/message.model.js';
+import { redisInitialization } from './config/RedisInit.js';
+import { socketAuth } from './middleware/SocketAuth.js';
+import { GroupModel } from './models/Group.model.js';
+import { GroupMemberModel } from './models/groupMember.model.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -24,22 +29,30 @@ const PORT = process.env.PORT || 5002;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
-app.use("/api/auth", routes);
+app.use("/api/auth", authRoutes);
+app.use("/api/messaging", messagingRoutes);
 
+io.use(socketAuth);
 io.on("connection", connection);
 
 //initialize databases
-export const credentialsDB = await initializeCredentialsDB();
-export const messagingDB = await initializeMessagingDB();
+export const credentialsDB = initializeCredentialsDB();
+export const messagingDB = initializeMessagingDB();
 
 // Ensure DB models are synced before starting the HTTP server
 const userAuthModel = new UserAuthModel(credentialsDB);
 const userModel = new UserModel(messagingDB);
 const messageModel = new MessageModel(messagingDB);
-// ensure DB schema updates (adds avatarUrl if missing)
+const groupModel = new GroupModel(messagingDB);
+const groupMemberModel = new GroupMemberModel(messagingDB);
+// ensure DB schema updates (adds fields if missing)
 await userModel.sync({ alter: true });
 await userAuthModel.sync();
-await messageModel.sync();
+await messageModel.sync({alter: true});
+await groupModel.sync({alter: true});
+await groupMemberModel.sync({alter: true});
+// Initialize Redis
+await redisInitialization();
 
 
 server.listen(PORT, () => {

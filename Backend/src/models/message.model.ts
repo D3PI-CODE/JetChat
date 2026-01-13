@@ -1,0 +1,126 @@
+import Sequelize from 'sequelize';
+import { User, UserModel } from './user.model.js';
+import { GroupModel } from './Group.model.js';
+
+export const message = (sequelize : Sequelize.Sequelize) => {
+    const messageModel = sequelize.define(
+        'Message',
+        {
+            messageid: {
+                type: Sequelize.UUID,
+                primaryKey: true,
+                defaultValue: Sequelize.UUIDV4,
+            },
+            senderID: {
+                type: Sequelize.STRING,
+                allowNull: false,
+            },
+            receiverID: {
+                type: Sequelize.STRING,
+                allowNull: true,
+            },
+            content: {
+                type: Sequelize.STRING,
+                defaultValue: '',
+            },
+            read: {
+                type: Sequelize.BOOLEAN,
+                defaultValue: false,
+            },
+                groupID: {
+                    // optional foreign key to a group; null for 1-1 messages
+                    type: Sequelize.UUID,
+                    allowNull: true,
+                },
+        },
+        {
+            tableName: 'messages',
+            createdAt: true,
+            updatedAt: false,
+        }
+
+    );
+
+    return messageModel;
+};
+
+
+
+class MessageModel {
+    sequelize: Sequelize.Sequelize;
+    Message: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    User: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    Group: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    constructor(sequelize : Sequelize.Sequelize) {
+        this.sequelize = sequelize;
+        this.Message = message(sequelize);
+        this.User = new UserModel(sequelize).getUserModel();
+        this.Group = new GroupModel(sequelize).getGroupModel();
+
+        try {
+            this.User.hasMany(this.Message, { foreignKey: 'senderID' });
+            this.User.hasMany(this.Message, { foreignKey: 'receiverID'});
+            this.Message.belongsTo(this.User, { foreignKey: 'senderID'});
+            this.Message.belongsTo(this.User, { foreignKey: 'receiverID'});
+
+            this.Group.hasMany(this.Message, { foreignKey: 'groupID' });
+            this.Message.belongsTo(this.Group, { foreignKey: 'groupID' });
+        } catch (err) {
+            console.error('Error setting up associations in MessageModel:', err);
+        }
+    }
+
+    getMessageModel() {
+        return this.Message;
+    }
+
+    createMessage(senderID: string, receiverID: string, content: string) {
+        return this.Message.create({
+            senderID,
+            receiverID,
+            content,
+        })
+    }
+    getMsgByUserIDs(senderID: string, receiverID: string) {
+        return this.Message.findAll({
+            where: {
+                senderID: senderID,
+                receiverID: receiverID,
+            },
+            order: [['createdAt', 'ASC']],
+            include: this.User,        
+        });
+    }
+    getMsgByGroupID(groupID: string) {
+        return this.Message.findAll({
+            where: {
+                groupID: groupID,
+            },
+            order: [['createdAt', 'ASC']],
+            include: [this.Group, this.User],        
+        });
+    }
+
+    updateReadStatus(messageID: string, readStatus: boolean) {
+        return this.Message.update(
+            { read: readStatus },
+            { where: { messageid: messageID } }
+        );
+    }
+
+    countUnreadMessages(userID: string, receiverID :string) {
+        return this.Message.count({
+            where: {
+                senderID: userID,
+                receiverID: receiverID,
+                read: false,
+            },
+        });
+    }
+
+    async sync(options = {}) {
+        await this.sequelize.sync(options);
+    }
+}
+
+export { MessageModel };

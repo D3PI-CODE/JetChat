@@ -1,132 +1,227 @@
 import { io, messagingDB } from '../index.js';
 import { MessageModel } from '../models/message.model.js';
 import { UserModel } from '../models/user.model.js';
-import Cloudinary from '../lib/Cloudinary.js';
+import Cloudinary from '../config/CloudinaryInit.js';
+import { GroupModel } from '../models/Group.model.js';
+import { broadcastUserIds } from '../Services/socket/broadcastUserIds.service.js';
+import { broadcastGroups } from '../Services/socket/BroadcastGroups.service.js';
+import { markAsRead } from '../Services/socket/MarkAsRead.service.js';
+import { sendMessage } from '../Services/socket/SendMessage.js';
+import { mentionUserInGroup } from '../Services/socket/mentionUser.js';
 
-export const connection =  (socket) => {
-    console.log("a user connected: " + socket.id);
-    socket.email = socket.handshake.auth.email;
+const groupTypingMap = new Map(); // groupID -> Map<senderKey, { id, username }>
+
+// Broadcast current users and their online status to all connected sockets.
+// export const broadcastUserIds = async (socket) => {
+//     try {
+//         const userModel = new UserModel(messagingDB);
+//         const allUsers = await userModel.getUserModel().findAll({ raw: true });
+//         try {
+//             await redisClient.del("user:online");
+//         } catch (e) {
+//             console.warn('Redis DEL user:online failed:', e && e.message);
+//         }
+//         for (const s of Array.from(io.of("/").sockets.values())) {
+//             try {
+//                 if (s.userID) await redisClient.SADD("user:online", String(s.userID));
+//                 else if (s.email) await redisClient.SADD("user:online", s.email);
+//             } catch (e) {
+//                 console.warn('Redis SADD failed for user presence:', e && e.message);
+//             }
+//         }
+
+//         const userArr = await Promise.all((allUsers || []).map(async u => ({
+//             id: u.id,
+//             email: u.email,
+//             username: u.username ?? u.email,
+//             avatarUrl: u.avatarUrl || null,
+//             online: await redisClient.SISMEMBER("user:online", String(u.id)) === 1 ? true : false,
+//         })));
+        
+//         console.log("Broadcasting users (with online status):", userArr);
+//         io.emit("users", userArr);
+//     } catch (err) {
+//         console.error('Error broadcasting users:', err);
+//     }
+// };
+
+//const broadcastUserIds = broadcastUserIds(socket);
+
+export const connection =  async (socket) => {
+    console.log("Socket connected, socket id: " + socket.id + " userID: " + socket.userID);
     console.log("User email: " + socket.email);
-  // Build and broadcast a list of all application users with online status.
-  // This ensures that when a user disconnects (logs out) they remain visible
-  // to clients but are marked as offline.
-    const broadcastUserIds = async () => {
+    // Try to resolve the canonical DB id for this connection. The middleware
+    // may have set socket.userID to an email as a fallback; prefer DB id.
+    try {
+        const canonicalId = socket.userID;
+        if (canonicalId) {
+            socket.userID = canonicalId; // use DB id for room name
+            socket.join(String(canonicalId));
+        } else {
+            console.warn('Could not resolve canonical user id for socket; not joining user room.', { socketId: socket.id, providedUserID: socket.userID, email: socket.email });
+        }
+    } catch (err) {
+        console.error('Error resolving canonical user id for socket:', err);
+    }
+
+    // call module-level broadcaster
+    broadcastUserIds(socket);
+    broadcastGroups();
+
+
+    // Typing indicator handlers
+    socket.on('typingStart', async (data) => {
         try {
-            const userModel = new UserModel(messagingDB);
-            // fetch all users from DB
-            const allUsers = await userModel.getUserModel().findAll({ raw: true });
+            const fromUserId = data && data.fromUserId;
+            const fromEmail = data && data.fromEmail;
+            const fromUsername = data && data.fromUsername;
+            const groupID = data && data.groupID;
 
-            // build a map of email -> array of connected socket ids
-            const emailToSocketIds = {};
-            for (let [sid, s] of io.of("/").sockets) {
-                const email = s.email;
-                if (!email) continue;
-                if (!emailToSocketIds[email]) emailToSocketIds[email] = [];
-                emailToSocketIds[email].push(sid);
-            }
+            // For group chats maintain a set and broadcast the current set to members
+            if (groupID) {
+                const key = String(groupID);
+                let map = groupTypingMap.get(key);
+                if (!map) { map = new Map(); groupTypingMap.set(key, map); }
+                const senderKey = String(fromUserId || fromEmail || fromUsername || socket.userID || socket.email);
+                map.set(senderKey, { id: fromUserId || fromEmail || null, username: fromUsername || fromEmail || null });
 
-            const userArr = (allUsers || []).map(u => ({
-                id: u.id,
-                email: u.email,
-                username: u.username ?? u.email,
-                avatarUrl: u.avatarUrl || null,
-                socketIds: emailToSocketIds[u.email] || [],
-                online: (emailToSocketIds[u.email] || []).length > 0,
-            }));
-
-            // also include any connected emails that don't exist in DB (fallback)
-            for (const [sid, s] of io.of("/").sockets) {
-                const email = s.email;
-                if (!email) continue;
-                const exists = userArr.find(x => x.email === email);
-                if (!exists) {
-                    userArr.push({
-                        id: null,
-                        email,
-                        username: email,
-                        socketIds: emailToSocketIds[email] || [sid],
-                        online: true,
-                    });
+                // emit updated typing list to all group members (except the sender)
+                try {
+                    const groupModelInstance = new GroupModel(messagingDB);
+                    const groupMemberModel = groupModelInstance.GroupMember;
+                    const members = await groupMemberModel.findAll({ where: { groupID } });
+                    const typingUsers = Array.from(map.values());
+                    for (const m of members) {
+                        const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
+                        if (!memberId) continue;
+                        // skip sender
+                        if (String(memberId) === String(senderKey)) continue;
+                        try { io.to(String(memberId)).emit('typingUpdate', { groupID, typingUsers }); } catch (e) {}
+                    }
+                } catch (e) {
+                    console.warn('typingStart: could not notify group members', e && e.message);
+                }
+            } else {
+                // Private chat: notify single recipient room (toEmail or toUserId must be provided)
+                const toUserId = data && data.toUserId;
+                const toEmail = data && data.toEmail;
+                const receiverRoom = toUserId ? String(toUserId) : (toEmail ? String(toEmail) : null);
+                if (receiverRoom) {
+                    try {
+                        io.to(receiverRoom).emit('typingUpdate', { chatKey: String(fromUserId || fromEmail || fromUsername || socket.userID || socket.email), typingUsers: [{ id: fromUserId || fromEmail || null, username: fromUsername || fromEmail || null }] });
+                    } catch (e) { console.warn('typingStart private emit failed', e && e.message); }
                 }
             }
-
-            console.log("Broadcasting users (with online status):", userArr);
-            io.emit("users", userArr);
         } catch (err) {
-            console.error('Error broadcasting users:', err);
+            console.error('Error in typingStart handler:', err && err.message);
         }
-    };
-    // Send initial list to everyone (including the newly connected socket)
-    broadcastUserIds();
+    });
 
-    // Ensure getMessages replies only to the requesting socket
-    socket.on("getMessages", (senderEmail, receiverEmail) => getMessages(socket, senderEmail, receiverEmail));
+    socket.on('typingStop', async (data) => {
+        try {
+            const fromUserId = data && data.fromUserId;
+            const fromEmail = data && data.fromEmail;
+            const fromUsername = data && data.fromUsername;
+            const groupID = data && data.groupID;
 
-    //sends a message to a specific socket id
-    socket.on("sendMessage", sendMessage);
+            if (groupID) {
+                const key = String(groupID);
+                const map = groupTypingMap.get(key);
+                if (map) {
+                    const senderKey = String(fromUserId || fromEmail || fromUsername || socket.userID || socket.email);
+                    map.delete(senderKey);
+                    const typingUsers = Array.from(map.values());
+                    try {
+                        const groupModelInstance = new GroupModel(messagingDB);
+                        const groupMemberModel = groupModelInstance.GroupMember;
+                        const members = await groupMemberModel.findAll({ where: { groupID } });
+                        for (const m of members) {
+                            const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
+                            if (!memberId) continue;
+                            try { io.to(String(memberId)).emit('typingUpdate', { groupID, typingUsers }); } catch (e) {}
+                        }
+                    } catch (e) {
+                        console.warn('typingStop: could not notify group members', e && e.message);
+                    }
+                }
+            } else {
+                const toUserId = data && data.toUserId;
+                const toEmail = data && data.toEmail;
+                const receiverRoom = toUserId ? String(toUserId) : (toEmail ? String(toEmail) : null);
+                if (receiverRoom) {
+                    try {
+                        io.to(receiverRoom).emit('typingUpdate', { chatKey: String(fromUserId || fromEmail || fromUsername || socket.userID || socket.email), typingUsers: [] });
+                    } catch (e) { console.warn('typingStop private emit failed', e && e.message); }
+                }
+            }
+        } catch (err) {
+            console.error('Error in typingStop handler:', err && err.message);
+        }
+    });
 
-    // pass socket through so handler can ack back to the requesting socket
     socket.on("changeProfilePic", (data) => changeProfilePic(socket, data));
+
+    socket.on("changeGroupAvatar", (data) => changeGroupAvatar(socket, data));
+    // Mention user in a group
+    socket.on('mentionUser', (data) => {
+        try {
+            mentionUserInGroup(socket, data);
+        } catch (err) {
+            console.error('Error handling mentionUser event:', err && err.message);
+        }
+    });
     
-      
+    // Message send handler - persist and route messages
+    socket.on('sendMessage', async (data) => {
+        try {
+            console.log('sendMessage event received from socket', socket.id, 'payload:', { groupID: data?.groupID, from: data?.fromEmail, to: data?.toEmail });
+            await sendMessage(socket, data);
+        } catch (err) {
+            console.error('Error handling sendMessage event:', err && err.message);
+            try { socket.emit('sendMessageError', { error: err && err.message || 'sendMessage failed' }); } catch (e) {}
+        }
+    });
+
+    // Mark-as-read handler - update DB and notify peers
+    socket.on('markAsRead', async (data) => {
+        try {
+            await markAsRead(data);
+        } catch (err) {
+            console.error('Error handling markAsRead event:', err && err.message);
+            try { socket.emit('markAsReadError', { error: err && err.message || 'markAsRead failed' }); } catch (e) {}
+        }
+    });
+    
+    
     // When a socket disconnects, broadcast the updated list of user IDs
     socket.on('disconnect', () => {
-        console.log("user disconnected: " + socket.id);
+        console.log("user disconnected: " + socket.id + " (userID: " + socket.userID + ")");
+        // remove from any typing maps
+        try {
+            for (const [gid, map] of Array.from(groupTypingMap.entries())) {
+                try {
+                    const senderKey1 = String(socket.userID || socket.email || '');
+                    if (map && map.delete && map.delete(senderKey1)) {
+                        // notify remaining members about updated typing list
+                        const typingUsers = Array.from(map.values());
+                        (async () => {
+                            try {
+                                const groupModelInstance = new GroupModel(messagingDB);
+                                const members = await groupModelInstance.GroupMember.findAll({ where: { groupID: gid } });
+                                for (const m of members) {
+                                    const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
+                                    if (!memberId) continue;
+                                    try { io.to(String(memberId)).emit('typingUpdate', { groupID: gid, typingUsers }); } catch (e) {}
+                                }
+                            } catch (e) {}
+                        })();
+                    }
+                } catch (e) {}
+            }
+        } catch (e) {}
         broadcastUserIds();
     });
 };
-
-
-export const sendMessage = async (data) => {
-    const messageModel = new MessageModel(messagingDB);
-    const userModel = new UserModel(messagingDB);
-    const sender = data.fromEmail
-    const receiver = data.toEmail
-    console.log(sender, receiver)
-    const senderID = await userModel.emailSearch(sender);
-    const receiverID = await userModel.emailSearch(receiver);
-    console.log("senderID: ", senderID, " receiverID: ", receiverID);
-    await messageModel.createMessage(senderID, receiverID, data.message);
-    console.log("message received: ", data);
-    io.to(data.to).emit("receiveMessage", data);
-    console.log("message sent to: ", data.to);
-};
-
-export const getMessages = async (socket, senderEmail, receiverEmail) => {
-    try {
-        const messageModel = new MessageModel(messagingDB);
-        const userModel = new UserModel(messagingDB);
-        const senderID = await userModel.emailSearch(senderEmail);
-        const receiverID = await userModel.emailSearch(receiverEmail);
-        const SentMessages = await messageModel.getMsgByUserIDs(senderID, receiverID);
-        const ReceivedMessages = await messageModel.getMsgByUserIDs(receiverID, senderID);
-        // Map Sequelize instances to plain objects to ensure JSON-safe payload
-        const payloadSent = (SentMessages || []).map(msg => ({
-            from: senderEmail,
-            to: receiverEmail,
-            content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
-            timestamp: (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : msg.createdAt,
-            type: 'sent',
-        }));
-        const payloadReceived = (ReceivedMessages || []).map(msg => ({
-            from: receiverEmail,
-            to: senderEmail,
-            content: (typeof msg.getDataValue === 'function') ? msg.getDataValue('content') : msg.content,
-            timestamp: (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : msg.createdAt,
-            type: 'received',
-        }));
-        const mergedPayload = [
-            ...payloadSent,
-            ...payloadReceived
-        ];
-        mergedPayload.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        socket.emit("previousMessages", mergedPayload);
-    } catch (err) {
-        console.error('Error in getMessages:', err);
-        // Inform the requesting socket of the failure
-        socket.emit('previousMessagesError', { error: 'Failed to load messages' });
-    }
-}
 
 export const changeProfilePic = async (socket, data) => {
     try {
@@ -176,7 +271,14 @@ export const changeProfilePic = async (socket, data) => {
             result = await Cloudinary.uploader.upload(payload, {
                 folder: 'avatars',
                 resource_type: 'image',
+                width: 500,
+                height: 500,
+                crop: 'fill',
+                fetch_format: 'auto',
+                quality: 'auto',
+                gravity: 'face',
             });
+        
         } finally {
             clearInterval(spinnerInterval);
             const totalElapsed = Date.now() - startTime;
@@ -199,24 +301,7 @@ export const changeProfilePic = async (socket, data) => {
             const userModel = new UserModel(messagingDB);
             await userModel.getUserModel().update({ avatarUrl: imageUrl }, { where: { email: data.email } });
 
-            // rebroadcast users so clients get updated avatarUrl
-            const allUsers = await userModel.getUserModel().findAll({ raw: true });
-            const emailToSocketIds = {};
-            for (let [sid, s] of io.of("/").sockets) {
-                const email = s.email;
-                if (!email) continue;
-                if (!emailToSocketIds[email]) emailToSocketIds[email] = [];
-                emailToSocketIds[email].push(sid);
-            }
-            const userArr = (allUsers || []).map(u => ({
-                id: u.id,
-                email: u.email,
-                username: u.username ?? u.email,
-                avatarUrl: u.avatarUrl || null,
-                socketIds: emailToSocketIds[u.email] || [],
-                online: (emailToSocketIds[u.email] || []).length > 0,
-            }));
-            io.emit('users', userArr);
+            broadcastUserIds();
 
             // ack back to the requesting socket with the new URL
             socket.emit('profilePicUpdated', { email: data.email, avatarUrl: imageUrl });
@@ -230,6 +315,74 @@ export const changeProfilePic = async (socket, data) => {
     }
 }
 
+const changeGroupAvatar = async (socket, data) => {
+    try {
+        const groupID = data && data.groupID;
+        if (!groupID) {
+            try { socket.emit('changeGroupAvatarError', { error: 'Missing groupID' }); } catch (e) {}
+            return;
+        }
+        const groupModelInstance = new GroupModel(messagingDB);
+        const groupMemberModel = groupModelInstance.GroupMember;
+
+        const requesterId = socket.userID || socket.email;
+        if (!requesterId) {
+            socket.emit('changeGroupAvatarError', { error: 'Unauthenticated' });
+            return;
+        }
+
+        // Only members can change the group avatar
+        const requester = await groupMemberModel.findOne({ where: { groupID, memberID: requesterId } });
+        if (!requester) {
+            socket.emit('changeGroupAvatarError', { error: 'You must be a group member to change the avatar' });
+            return;
+        }
+
+        // Upload new avatar to Cloudinary
+        let payload = data.imageData && typeof data.imageData === 'string' ? data.imageData.trim() : '';
+        const base64Only = /^[A-Za-z0-9+/]+={0,2}$/.test(payload) && !payload.startsWith('data:');
+        if (base64Only) {
+            payload = `data:image/jpeg;base64,${payload}`;
+        }
+
+        console.log(`Uploading new avatar for groupID: ${groupID} by memberID: ${requesterId}`);
+        const result = await Cloudinary.uploader.upload(payload, {
+            folder: 'group_avatars',
+            resource_type: 'image',
+        });
+        console.log('Cloudinary upload result for group avatar:', { public_id: result?.public_id, secure_url: result?.secure_url });
+        const imageUrl = result?.secure_url;
+        if (!imageUrl) {
+            throw new Error('Cloudinary did not return a secure_url for group avatar');
+        }
+
+        // Update group record in DB with new avatarUrl
+        await groupModelInstance.getGroupModel().update(
+            { groupAvatarUrl: imageUrl },
+            { where: { groupid: groupID } }
+        );
+        socket.emit('changeGroupAvatarSuccess', { groupID, groupAvatarUrl: imageUrl, groupAvatar: imageUrl });
+        // Also emit globally so clients that may not receive the per-member `groups` broadcast
+        // update their UI immediately. broadcastGroups will also run below.
+        try {
+            io.emit('changeGroupAvatarSuccess', { groupID, groupAvatarUrl: imageUrl, groupAvatar: imageUrl });
+        } catch (e) {
+            console.warn('Global emit changeGroupAvatarSuccess failed:', e && e.message);
+        }
+        console.log(`Group avatar updated successfully: groupID ${groupID}`);
+
+        // Broadcast updated groups to all connected clients
+        try {
+            await broadcastGroups();
+        } catch (broadcastErr) {
+            console.warn('Failed to broadcast groups after changing avatar:', broadcastErr && broadcastErr.message);
+        }
+
+    } catch (err) {
+        console.error('Error in changeGroupAvatar:', err);
+        try { socket.emit('changeGroupAvatarError', { error: err && err.message || 'changeGroupAvatar failed' }); } catch (e) {}
+    }
+};
 
 
 

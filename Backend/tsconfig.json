@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    /* 1. ENABLE HYBRID MODE */
+    "allowJs": true,            /* Allows JS files to be part of the build */
+    "checkJs": false,           /* Optional: Set true if you want TS to check JS files for errors too */
+
+    /* 2. KEEP THESE FROM BEFORE */
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2022",
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "strict": true,             /* WARNING: See note below */
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules"]
+}

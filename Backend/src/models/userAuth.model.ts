@@ -1,6 +1,6 @@
 import Sequelize from 'sequelize';
 
-export const UserAuth = (sequelize) => {
+export const UserAuth = (sequelize: Sequelize.Sequelize) => {
     const UserAuthModel = sequelize.define(
         'User',
         {
@@ -29,7 +29,10 @@ export const UserAuth = (sequelize) => {
 };
 
 class UserAuthModel {
-    constructor(sequelize) {
+    sequelize: Sequelize.Sequelize;
+    UserAuth: Sequelize.ModelStatic<Sequelize.Model<any, any>>;
+    model: Record<string, Sequelize.ModelStatic<Sequelize.Model<any, any>>>;
+    constructor(sequelize: Sequelize.Sequelize) {
         this.sequelize = sequelize;
         this.UserAuth = UserAuth(sequelize);
         this.model = sequelize.models;
@@ -39,12 +42,12 @@ class UserAuthModel {
         return this.UserAuth;
     }
 
-    createUser(email, password) {
+    createUser(email: string, password: string) {
         return this.UserAuth.create({
             email, 
             password });
     }
-    emailSearch(email) {
+    async emailSearch(email: string): Promise<string | null> {
         if (!email) {
             console.warn('UserAuthModel.emailSearch called with falsy email:', email);
             return Promise.resolve(null);
@@ -57,7 +60,7 @@ class UserAuthModel {
                 return user.getDataValue("id");
             });
     }
-    getPassword(UserID) {
+    async getPassword(UserID: string): Promise<string | null> {
         if (!UserID) {
             console.warn('UserAuthModel.getPassword called with falsy UserID:', UserID);
             return Promise.resolve(null);
