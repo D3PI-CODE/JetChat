@@ -73,7 +73,7 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                         return (
                             <div key={idx} className="flex items-end gap-3 justify-end group">
                                 <div className="flex flex-col gap-1 items-end group/message relative">
-                                    <div className="rounded-2xl rounded-br-md bg-gradient-to-br from-blue-500/90 to-blue-600/90 backdrop-blur-sm p-4 text-white max-w-xl shadow-xl border border-white/20 hover:shadow-2xl hover:shadow-blue-500/20 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-600 ease-out group-hover/message:shadow-2xl group-hover/message:shadow-blue-500/30">
+                                    <div className="rounded-2xl rounded-br-md bg-linear-to-br from-blue-500/90 to-blue-600/90 backdrop-blur-sm p-4 text-white max-w-xl shadow-xl border border-white/20 hover:shadow-2xl hover:shadow-blue-500/20 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-600 ease-out group-hover/message:shadow-2xl group-hover/message:shadow-blue-500/30">
                                         <p className="text-sm drop-shadow-sm group-hover/message:scale-105 transition-transform duration-300">{renderMessageWithMentions(content)}</p>
                                     </div>
                                     <span className="text-xs text-white/60 flex gap-2 drop-shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-500">
@@ -95,7 +95,7 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                     return (
                         <div key={idx} className="flex items-end gap-3 justify-end group">
                             <div className="flex flex-col gap-1 items-end group/message relative">
-                                <div className="rounded-2xl rounded-br-md bg-gradient-to-br from-blue-500/90 to-blue-600/90 backdrop-blur-sm p-4 text-white max-w-xl shadow-xl border border-white/20 hover:shadow-2xl hover:shadow-blue-500/20 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-600 ease-out group-hover/message:shadow-2xl group-hover/message:shadow-blue-500/30">
+                                <div className="rounded-2xl rounded-br-md bg-linear-to-br from-blue-500/90 to-blue-600/90 backdrop-blur-sm p-4 text-white max-w-xl shadow-xl border border-white/20 hover:shadow-2xl hover:shadow-blue-500/20 hover:scale-[1.02] hover:-translate-y-0.5 transition-all duration-600 ease-out group-hover/message:shadow-2xl group-hover/message:shadow-blue-500/30">
                                     <p className="text-sm drop-shadow-sm group-hover/message:scale-105 transition-transform duration-300">{renderMessageWithMentions(content)}</p>
                                 </div>
                                 <span className="text-xs text-white/60 flex gap-2 drop-shadow-sm opacity-0 group-hover:opacity-100 transition-opacity duration-500">
@@ -147,7 +147,7 @@ export default function Textbubble({ messages = [], activeChat = null, users = [
                     return (
                         <div key={idx} className="flex items-start gap-3 max-w-xl group">
                             <div className="relative group/avatar">
-                                <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-white/15 rounded-full blur-sm group-hover/avatar:blur-lg group-hover/avatar:scale-110 transition-all duration-700 ease-out"></div>
+                                <div className="absolute inset-0 bg-linear-to-br from-white/40 to-white/15 rounded-full blur-sm group-hover/avatar:blur-lg group-hover/avatar:scale-110 transition-all duration-700 ease-out"></div>
                                 <div
                                     className="bg-center bg-no-repeat aspect-square bg-cover rounded-full w-10 h-10 shrink-0 border-2 border-white/20 shadow-lg hover:shadow-2xl hover:shadow-white/20 hover:scale-110 hover:rotate-6 transition-all duration-700 ease-out relative z-10 group-hover/avatar:brightness-110"
                                     style={{backgroundImage: messageAvatar ? `url('${messageAvatar}')` : `url('https://placehold.co/10')`}}

@@ -90,13 +90,13 @@ export default function NotificationBanner({ notification, onDismiss }) {
       {/* Apple-style notification banner */}
       <div className="bg-black/20 backdrop-blur-2xl rounded-2xl shadow-2xl border border-white/10 relative overflow-hidden max-w-md mx-auto">
         {/* Subtle gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-transparent to-purple-500/5 rounded-2xl"></div>
+        <div className="absolute inset-0 bg-linear-to-r from-blue-500/5 via-transparent to-purple-500/5 rounded-2xl"></div>
 
         {/* Content */}
         <div className="relative z-10 p-4 flex items-start gap-3">
           {/* Avatar */}
-          <div className="flex-shrink-0">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-lg">
+          <div className="shrink-0">
+            <div className="w-10 h-10 rounded-full bg-linear-to-br from-blue-400 to-blue-600 flex items-center justify-center shadow-lg">
               <span className="text-white font-semibold text-sm">
                 {(notification.senderName || notification.sender || 'U').charAt(0).toUpperCase()}
               </span>
@@ -131,7 +131,7 @@ export default function NotificationBanner({ notification, onDismiss }) {
 
         {/* Progress bar */}
         <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
-          <div className="h-full bg-gradient-to-r from-blue-400 to-purple-400 animate-progress-shrink rounded-r-full"></div>
+          <div className="h-full bg-linear-to-r from-blue-400 to-purple-400 animate-progress-shrink rounded-r-full"></div>
         </div>
       </div>
     </div>
