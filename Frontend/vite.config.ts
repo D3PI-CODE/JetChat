@@ -1,12 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import jsconfigPaths from 'vite-jsconfig-paths'
+import tsconfigPaths from 'vite-tsconfig-paths'
 import flowbiteReact from "flowbite-react/plugin/vite";
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), jsconfigPaths(), flowbiteReact()],
+  plugins: [react(), tailwindcss(), tsconfigPaths(), flowbiteReact()],
   server: {
     proxy: {
       '/api': {
