@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
-import io from 'socket.io-client';
+import io, { Socket } from 'socket.io-client';
+import { SocketParams } from '../types';
 
 // Lightweight hook that manages a single socket instance and exposes a ref.
 // It does NOT attach event handlers; callers should attach listeners to
 // `socketRef.current` so they can pass local state setters/callbacks.
-export default function useChatSocket({ url = 'http://localhost:5002', token, userID, email } = {}) {
-  const socketRef = useRef(null);
+export default function useChatSocket({ url = 'http://localhost:5002', token, userID, email }: SocketParams) {
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     if (socketRef.current) return;

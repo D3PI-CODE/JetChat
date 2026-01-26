@@ -1,6 +1,13 @@
 import React from 'react';
+import { Chat, User } from '../types';
 
-export default function ChatList({ chats, activeChat, onChatSelect }) {
+interface ChatListProps {
+  chats: Chat[];
+  activeChat: Chat | null;
+  onChatSelect: (chat: Chat) => void;
+}
+
+export default function ChatList({ chats, activeChat, onChatSelect }: ChatListProps) {
     return (
         <aside className="flex h-screen w-full max-w-sm flex-col relative">
             <div className="p-6 border-b border-white/5 backdrop-blur-md">

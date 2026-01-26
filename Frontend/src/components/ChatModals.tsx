@@ -1,8 +1,36 @@
 import React from 'react';
 import { MdGroupAdd, MdGroupRemove, MdExitToApp, MdOutlineDeleteOutline, MdDriveFileRenameOutline } from "react-icons/md";
 import { IoIosClose } from "react-icons/io";
+import { Chat, ModalsState, GroupMember, User } from '../types';
 
-export const GroupModals = ({ state, actions }) => {
+interface GroupModalsState {
+  activeChat: Chat | null;
+  modals: ModalsState;
+  groupMembersMap: Record<string, GroupMember[]>;
+  myRole: 'owner' | 'admin' | 'member' | null;
+  myEmail: string | null;
+  users: Chat[];
+  selectedToAdd: string[] | null;
+  newGroupName: string;
+}
+
+interface GroupModalsActions {
+  toggleModal: (name: string, value: boolean) => void;
+  setSelectedToAdd: React.Dispatch<React.SetStateAction<string[] | null>>;
+  changeRole: (member: GroupMember, newRole: string) => void;
+  removeMember: (member: GroupMember) => void;
+  addMembers: () => void;
+  renameGroupSubmit: () => void;
+  deleteGroup: () => void;
+  leaveGroup: () => void;
+}
+
+interface GroupModalsProps {
+  state: GroupModalsState;
+  actions: GroupModalsActions;
+}
+
+export const GroupModals = ({ state, actions }: GroupModalsProps) => {
     const { activeChat, modals, groupMembersMap, myRole, myEmail, users, selectedToAdd, newGroupName } = state;
     // handle numeric/string groupID keys gracefully
     const gid = activeChat?.groupID ?? activeChat?.userID ?? null;
@@ -341,10 +369,23 @@ export const GroupModals = ({ state, actions }) => {
     );
 }
 
-export const ForwardModal = ({ chats, onClose, forwardingMessage, actions }) => {
+interface ForwardModalProps {
+  chats: Chat[];
+  onClose: () => void;
+  forwardingMessage: Message | null;
+  actions: {
+    setActiveChat: (chat: Chat) => void;
+    setMessage: (message: string) => void;
+    sendMessage: () => void;
+    toggleModal: (name: string, value: boolean) => void;
+    setForwardingMessage: (message: Message | null) => void;
+  };
+}
+
+export const ForwardModal = ({ chats, onClose, forwardingMessage, actions }: ForwardModalProps) => {
     if (!forwardingMessage) return null;
 
-    const handleForwardTo = (target) => {
+    const handleForwardTo = (target: Chat) => {
         // Set the target chat, populate the message input with forwarded content, then send
         actions.setActiveChat(target);
         const text = forwardingMessage.content || forwardingMessage.message || forwardingMessage.body || '';

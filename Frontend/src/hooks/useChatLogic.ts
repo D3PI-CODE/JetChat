@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useState, useRef } from 'react';
-import useChatSocket from './useChatSocket'; // Assuming this exists based on your code
+import useChatSocket from './useChatSocket';
 import { 
     createGroupApi, 
     addGroupMemberApi, 
@@ -14,37 +14,42 @@ import {
     changeGroupAvatarApi
 } from '@/Services/api';
 import { uploadToCloudinary } from '@/utils/cloudinaryUpload';
+import { Message, Chat, GroupMember, ModalsState } from '../types';
 
 export const useChatLogic = () => {
     // --- State ---
     const [message, setMessage] = useState('');
-    const [textMessage, setTextMessage] = useState([]);
-    const [users, setUsers] = useState([]);
-    const [groupMembersMap, setGroupMembersMap] = useState({});
-    const [typingMap, setTypingMap] = useState({});
-    const [visible, setVisible] = useState([]);
-    const [activeChat, setActiveChat] = useState(null);
-    const [profileImage, setProfileImage] = useState(null);
+    const [textMessage, setTextMessage] = useState<Message[]>([]);
+    const [users, setUsers] = useState<Chat[]>([]);
+    const [groupMembersMap, setGroupMembersMap] = useState<Record<string, GroupMember[]>>({});
+    const [typingMap, setTypingMap] = useState<Record<string, { username: string }[]>>({});
+    const [visible, setVisible] = useState<Chat[]>([]);
+    const [activeChat, setActiveChat] = useState<Chat | null>(null);
+    const [profileImage, setProfileImage] = useState<string | null>(null);
     
     // --- Modal States ---
-    const [modals, setModals] = useState({
+    const [modals, setModals] = useState<ModalsState & { roleDropdown: string | null }>({
         membersList: false,
         addMembers: false,
         createGroup: false,
         forward: false,
-        roleDropdown: null, // Stores email of user to show dropdown for
+        renameGroup: false,
+        deleteGroup: false,
+        leaveGroup: false,
+        removeMember: false,
+        roleDropdown: null,
     });
     
     // --- Selection/Input States ---
-    const [selectedToAdd, setSelectedToAdd] = useState([]);
+    const [selectedToAdd, setSelectedToAdd] = useState<string[] | null>(null);
     const [newGroupName, setNewGroupName] = useState('');
-    const [forwardingMessage, setForwardingMessage] = useState(null);
+    const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
 
     // --- Refs ---
-    const typingTimeoutRef = useRef(null);
+    const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isTypingRef = useRef(false);
-    const activeChatRef = useRef(activeChat);
-    const fileInputRef = useRef(null);
+    const activeChatRef = useRef<Chat | null>(activeChat);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     // --- Auth/Socket Init ---
     const myEmail = localStorage.getItem('email');
@@ -64,8 +69,8 @@ export const useChatLogic = () => {
         if (!socket) return;
 
         // 1. User Management
-        const handleUsers = (usersList) => {
-            const processed = (usersList || []).map((user) => ({
+        const handleUsers = (usersList: any[]) => {
+            const processed = (usersList || []).map((user: any) => ({
                 username: user.username ?? user.email,
                 email: user.email,
                 avatarUrl: user.avatarUrl || null,
@@ -75,7 +80,7 @@ export const useChatLogic = () => {
                 group: false,
             }));
 
-            processed.sort((a, b) => {
+            processed.sort((a: any, b: any) => {
                 if (a.self) return -1;
                 if (b.self) return 1;
                 if (a.online !== b.online) return a.online ? -1 : 1;
@@ -85,27 +90,27 @@ export const useChatLogic = () => {
             setUsers(processed);
             
             // Set own avatar
-            const me = processed.find(u => u.email === myEmail);
+            const me = processed.find((u: any) => u.email === myEmail);
             if (me && me.avatarUrl) setProfileImage(me.avatarUrl);
 
             // Merge with existing groups to prevent flashing
-            setVisible(prev => {
-                const existingGroups = (prev || []).filter(item => item && item.group);
-                return [...processed.filter(u => !u.self), ...existingGroups];
+            setVisible((prev: Chat[]) => {
+                const existingGroups = (prev || []).filter((item: Chat) => item && item.group);
+                return [...processed.filter((u: any) => !u.self), ...existingGroups];
             });
 
             // Update active chat reference if user details changed
             const currentActive = activeChatRef.current;
             if (currentActive && !currentActive.group) {
-                const updated = processed.find(u => u.userID === currentActive.userID);
+                const updated = processed.find((u: any) => u.userID === currentActive.userID);
                 if (updated) setActiveChat(updated);
                 else setActiveChat(null);
             }
         };
 
         // 2. Group Management
-        const handleGroups = (groupsList) => {
-            const processed = groupsList.map((group) => ({
+        const handleGroups = (groupsList: any[]) => {
+            const processed = groupsList.map((group: any) => ({
                 username: group.groupName,
                 groupID: group.groupid,
                 userID: group.groupid, 
@@ -115,25 +120,27 @@ export const useChatLogic = () => {
                 group: true,
             }));
 
-            setVisible((prev) => {
-                const nonGroupItems = (prev || []).filter(item => !item.group);
+            setVisible((prev: Chat[]) => {
+                const nonGroupItems = (prev || []).filter((item: Chat) => !item.group);
                 return [...nonGroupItems, ...processed];
             });
 
             if (Array.isArray(groupsList)) {
-                setGroupMembersMap(prev => {
+                setGroupMembersMap((prev: Record<string, GroupMember[]>) => {
                     const next = { ...(prev || {}) };
                     for (const g of groupsList) {
                         if (g && g.groupid) {
-                            const membersArr = (g.members || []).map(m => ({
+                            const membersArr = (g.members || []).map((m: any) => ({
                                 id: m.id,
                                 name: m.name || m.username || m.email,
                                 email: m.email,
-                                role: m.role
+                                role: m.role,
+                                userID: m.id,
+                                username: m.username
                             }));
 
                             // Owner should always be first, others alphabetical by name
-                            membersArr.sort((a, b) => {
+                            membersArr.sort((a: any, b: any) => {
                                 if (a.role === 'owner' && b.role !== 'owner') return -1;
                                 if (b.role === 'owner' && a.role !== 'owner') return 1;
                                 return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
@@ -148,14 +155,14 @@ export const useChatLogic = () => {
 
             const currentActive = activeChatRef.current;
             if (currentActive && currentActive.group) {
-                const updated = processed.find(g => g.groupID === currentActive.groupID);
+                const updated = processed.find((g: any) => g.groupID === currentActive.groupID);
                 if (updated) setActiveChat(updated);
                 else setActiveChat(null);
             }
         };
 
         // 3. Message Handling
-        const handleReceive = (data) => {
+        const handleReceive = (data: any) => {
             const msgObj = {
                 id: data.id,
                 content: data.content,
@@ -177,13 +184,13 @@ export const useChatLogic = () => {
             // Update UI Message List
             if (isGroupMsg) {
                 if (ac && ac.group && String(ac.groupID) === String(data.groupID)) {
-                    setTextMessage((prev) => [...prev, msgObj]);
+                    setTextMessage((prev: Message[]) => [...prev, msgObj]);
                 } else {
                     incrementUnread(data.groupID, true);
                 }
             } else {
                 if (ac && (msgObj.toEmail === ac.email || msgObj.fromEmail === ac.email)) {
-                    setTextMessage((prev) => [...prev, msgObj]);
+                    setTextMessage((prev: Message[]) => [...prev, msgObj]);
                     socketRef.current.emit('markAsRead', { 
                         id: msgObj.id, 
                         fromEmail: msgObj.fromEmail, 
@@ -197,7 +204,7 @@ export const useChatLogic = () => {
             }
         };
 
-        const handleSent = (data) => {
+        const handleSent = (data: any) => {
             const msgObj = {
                 ...data,
                 type: "sent",
@@ -212,7 +219,7 @@ export const useChatLogic = () => {
                 (msgObj.toEmail && (msgObj.toEmail === ac.email || msgObj.fromEmail === ac.email)) || 
                 (ac.group && String(msgObj.groupID) === String(ac.groupID))
             ) {
-                setTextMessage((prev) => [...prev, msgObj]);
+                setTextMessage((prev: Message[]) => [...prev, msgObj]);
                 stopTypingEmit(ac);
             }
         };
@@ -224,8 +231,8 @@ export const useChatLogic = () => {
         socket.on('sentMessage', handleSent);
         
         // Helper to update unread counts
-        const incrementUnread = (id, isGroup) => {
-            setVisible(prev => prev.map(item => {
+        const incrementUnread = (id: string, isGroup: boolean) => {
+            setVisible((prev: Chat[]) => prev.map((item: Chat) => {
                 if (isGroup && item.group && String(item.groupID) === String(id)) {
                     return { ...item, unreadCount: (item.unreadCount || 0) + 1 };
                 }
@@ -237,36 +244,36 @@ export const useChatLogic = () => {
         };
 
         // --- Other Listeners (Typing, Profile, Group Events) ---
-        socket.on("unreadMessageCount", (data) => {
-            setVisible(prev => prev.map(u => u.userID === data.userID ? { ...u, unreadCount: data.count } : u));
+        socket.on("unreadMessageCount", (data: any) => {
+            setVisible((prev: Chat[]) => prev.map((u: Chat) => u.userID === data.userID ? { ...u, unreadCount: data.count } : u));
         });
 
-        socket.on('typingUpdate', (data) => {
+        socket.on('typingUpdate', (data: any) => {
             if (!data) return;
             const key = data.groupID ? String(data.groupID) : String(data.chatKey);
-            setTypingMap(prev => ({ ...prev, [key]: (Array.isArray(data.typingUsers) ? data.typingUsers : []) }));
+            setTypingMap((prev: Record<string, { username: string }[]>) => ({ ...prev, [key]: (Array.isArray(data.typingUsers) ? data.typingUsers : []) }));
         });
 
-        socket.on('profilePicUpdated', (data) => {
-             setUsers((prev) => prev.map(u => u.email === data.email ? { ...u, avatarUrl: data.avatarUrl } : u));
+        socket.on('profilePicUpdated', (data: any) => {
+             setUsers((prev: Chat[]) => prev.map((u: Chat) => u.email === data.email ? { ...u, avatarUrl: data.avatarUrl } : u));
              if (data.email === myEmail) setProfileImage(data.avatarUrl);
         });
 
-        socket.on('sendMessageError', (err) => {
+        socket.on('sendMessageError', (err: any) => {
             console.error('sendMessageError from server:', err);
         });
 
-        socket.on('changeGroupAvatarSuccess', (data) => {
+        socket.on('changeGroupAvatarSuccess', (data: any) => {
             const { groupID, newAvatarUrl, groupAvatar } = data || {};
             const url = groupAvatar || newAvatarUrl;
             if(url) {
-                setVisible(prev => prev.map(i => (i.group && String(i.groupID) === String(groupID)) ? {...i, groupAvatarUrl: url} : i));
-                if(activeChatRef.current?.groupID === groupID) setActiveChat(prev => ({...prev, groupAvatarUrl: url}));
+                setVisible((prev: Chat[]) => prev.map((i: Chat) => (i.group && String(i.groupID) === String(groupID)) ? {...i, groupAvatarUrl: url} : i));
+                if(activeChatRef.current?.groupID === groupID) setActiveChat((prev: any) => ({...prev, groupAvatarUrl: url}));
             }
         });
 
-        socket.on('mentionedInGroup', (data) => {
-             setVisible(prev => prev.map(item => {
+        socket.on('mentionedInGroup', (data: any) => {
+             setVisible((prev: Chat[]) => prev.map((item: Chat) => {
                  if (item.group && String(item.groupID) === String(data.groupID) && activeChatRef.current?.groupID !== data.groupID) {
                      return { ...item, hasMention: true };
                  }
@@ -274,9 +281,9 @@ export const useChatLogic = () => {
              }));
         });
 
-        socket.on('messageReadAck', (data) => {
+        socket.on('messageReadAck', (data: any) => {
              // Logic to clear unread counts and mark messages as read
-             setVisible(prev => prev.map(item => {
+             setVisible((prev: Chat[]) => prev.map((item: Chat) => {
                  const isGroupAck = data.groupID && item.group && String(item.groupID) === String(data.groupID);
                  const isPrivateAck = !item.group && (item.email === data.fromEmail || item.email === data.toEmail);
                  return (isGroupAck || isPrivateAck) ? { ...item, unreadCount: 0, hasMention: false } : item;
@@ -287,7 +294,7 @@ export const useChatLogic = () => {
                  const ac = activeChatRef.current;
                  const isGroupAck = data.groupID && ac.group && String(ac.groupID) === String(data.groupID);
                  const isPrivateAck = !ac.group && (data.fromEmail === ac.email || data.toEmail === ac.email);
-                 if (isGroupAck || isPrivateAck) setTextMessage(prev => prev.map(m => ({ ...m, read: true })));
+                 if (isGroupAck || isPrivateAck) setTextMessage((prev: Message[]) => prev.map((m: Message) => ({ ...m, read: true })));
              }
         });
 
@@ -305,11 +312,25 @@ export const useChatLogic = () => {
 
     // 1. Chat Switching
     const getMessages = async () => {
-        const payload = { from: myUserID, fromEmail: myEmail, to: activeChat.userID, toEmail: activeChat.email, token };
-        if (activeChat.group) payload.groupID = activeChat.groupID;
+        if (!activeChat) return;
+        const payload: {
+            from: string | null;
+            fromEmail: string | null;
+            to: string;
+            toEmail: string;
+            token: string | null;
+            groupID?: string;
+        } = { 
+            from: myUserID, 
+            fromEmail: myEmail, 
+            to: activeChat.userID, 
+            toEmail: activeChat.email, 
+            token 
+        };
+        if (activeChat.group && activeChat.groupID) payload.groupID = activeChat.groupID;
         const message = await getMessagesApi(payload);
         if (Array.isArray(message.messages)) {
-            const normalized = message.messages.map(m => ({
+            const normalized = message.messages.map((m: any) => ({
                 id: m.id ?? m.messageid,
                 groupID: m.groupID,
                 content: m.content,
@@ -343,7 +364,7 @@ export const useChatLogic = () => {
     }, [activeChat]);
 
     // 2. Typing Logic
-    const stopTypingEmit = (chat) => {
+    const stopTypingEmit = (chat: Chat) => {
         if (!socketRef.current || !chat) return;
         const payload = chat.group 
             ? { groupID: chat.groupID, fromUserId: myUserID, fromEmail: myEmail } 
@@ -355,7 +376,7 @@ export const useChatLogic = () => {
 
     const handleTypingLocal = () => {
         if (!activeChat || !socketRef.current) return;
-        const myName = users.find(u => u.email === myEmail)?.username || myEmail;
+        const myName = users.find((u: Chat) => u.email === myEmail)?.username || myEmail;
         const payload = activeChat.group 
             ? { groupID: activeChat.groupID, fromUserId: myUserID, fromEmail: myEmail, fromUsername: myName }
             : { toUserId: activeChat.userID, toEmail: activeChat.email, fromUserId: myUserID, fromEmail: myEmail, fromUsername: myName };
@@ -395,7 +416,7 @@ export const useChatLogic = () => {
         if (activeChat.group && text.split(" ").pop().startsWith("@")) {
             const mentionText = text.split(" ").pop().substring(1).toLowerCase();
             const members = groupMembersMap[activeChat.groupID] || [];
-            const targeted = members.find(m => m.email !== myEmail && (m.name || m.username || '').toLowerCase() === mentionText);
+            const targeted = members.find((m: GroupMember) => m.email !== myEmail && (m.name || m.username || '').toLowerCase() === mentionText);
             if (targeted) {
                  try { socket?.emit('mentionUser', { 
                      groupID: activeChat.groupID, mentionedEmail: targeted.email, mentionedID: targeted.id, 
@@ -438,11 +459,11 @@ export const useChatLogic = () => {
     // 4. Group & User Actions
     const handleLogOut = () => { localStorage.removeItem('token'); window.location.href = '/login'; };
     
-    const createGroup = async (e) => {
+    const createGroup = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newGroupName.trim()) return alert('Name required');
         try {
-            await createGroupApi({ groupName: newGroupName, createdBy: myUserID, token });
+            await createGroupApi({ groupName: newGroupName, createdBy: myUserID || '', token: token || '' });
             toggleModal('createGroup', false);
             setNewGroupName('');
         } catch (err) {
@@ -452,46 +473,51 @@ export const useChatLogic = () => {
     };
 
     const addMembers = async () => {
-        if (!selectedToAdd.length || !activeChat?.group) return;
-        await Promise.all(selectedToAdd.map(async email => {
-            const u = users.find(usr => usr.email === email);
-            await addGroupMemberApi({ groupID: activeChat.groupID, memberEmail: email, memberID: u?.userID, requesterID: myUserID, token });
+        if (!selectedToAdd || !selectedToAdd.length || !activeChat?.group) return;
+        await Promise.all(selectedToAdd.map(async (email: string) => {
+            const u = users.find((usr: Chat) => usr.email === email);
+            await addGroupMemberApi({ groupID: activeChat.groupID || '', memberEmail: email, memberID: u?.userID || '', requesterID: myUserID || '', token: token || '' });
         }));
         toggleModal('addMembers', false);
-        setSelectedToAdd([]);
+        setSelectedToAdd(null);
     };
 
-    const changeRole = async (member, role) => {
-        await changeGroupMemberRole({ groupID: activeChat.groupID, memberID: member.id, newRole: role, requesterID: myUserID, token });
+    const changeRole = async (member: GroupMember, role: string) => {
+        if (!activeChat?.groupID) return;
+        await changeGroupMemberRole({ groupID: activeChat.groupID, memberID: (member as any).id || member.userID, newRole: role, requesterID: myUserID || '', token: token || '' });
     };
 
-    const removeMember = async (member) => {
-        await removeGroupMemberApi({ groupID: activeChat.groupID, memberID: member.id, requesterID: myUserID, token });
+    const removeMember = async (member: GroupMember) => {
+        if (!activeChat?.groupID) return;
+        await removeGroupMemberApi({ groupID: activeChat.groupID, memberID: (member as any).id || member.userID, requesterID: myUserID || '', token: token || '' });
     };
 
     const leaveGroup = async () => {
-        await leaveGroupApi({ groupID: activeChat.groupID, requesterID: myUserID, token });
+        if (!activeChat?.groupID) return;
+        await leaveGroupApi({ groupID: activeChat.groupID, requesterID: myUserID || '', token: token || '' });
     };
 
     const deleteGroup = async () => {
+        if (!activeChat?.groupID) return;
         if(confirm("Confirm deletion?")) {
-            const deleteResp = await deleteGroupApi({ groupID: activeChat.groupID, requesterId: myUserID, token });
+            const deleteResp = await deleteGroupApi({ groupID: activeChat.groupID, requesterId: myUserID || '', token: token || '' });
             if (deleteResp && deleteResp.message) {
-                setGroupMembersMap(prev => { const n = {...prev}; delete n[activeChat.groupID]; return n; });
-                setVisible(prev => prev.filter(i => !(i.group && String(i.groupID) === String(activeChat.groupID))));
+                setGroupMembersMap((prev: Record<string, GroupMember[]>) => { const n = {...prev}; delete n[activeChat.groupID || '']; return n; });
+                setVisible((prev: Chat[]) => prev.filter((i: Chat) => !(i.group && String(i.groupID) === String(activeChat.groupID))));
                 if (activeChatRef.current?.groupID === activeChat.groupID) setActiveChat(null);
             }
         }
     };
 
     const renameGroupSubmit = async () => {
+        if (!activeChat?.groupID) return;
         const name = (newGroupName || '').trim();
         if (!name) return alert('Please enter a new group name');
         if (activeChat && activeChat.group) {
-            await renameGroupApi({ groupID: activeChat.groupID, newGroupName: name, requesterID: myUserID, token });
+            await renameGroupApi({ groupID: activeChat.groupID, newGroupName: name, requesterID: myUserID || '', token: token || '' });
             // Optimistically update UI
-            setVisible(prev => (prev || []).map(item => (item && item.group && String(item.groupID) === String(activeChat.groupID)) ? { ...item, username: name } : item));
-            setActiveChat(prev => (prev && prev.groupID && String(prev.groupID) === String(activeChat.groupID)) ? { ...prev, username: name } : prev);
+            setVisible((prev: Chat[]) => (prev || []).map((item: Chat) => (item && item.group && String(item.groupID) === String(activeChat.groupID)) ? { ...item, username: name } : item));
+            setActiveChat((prev: Chat | null) => (prev && prev.groupID && String(prev.groupID) === String(activeChat.groupID)) ? { ...prev, username: name } : prev);
         } else {
             alert('Unable to rename group');
         }
@@ -499,29 +525,36 @@ export const useChatLogic = () => {
         toggleModal('renameGroup', false);
     };
 
-    const handleAvatarUpload = async (e, isGroup) => {
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>, isGroup: boolean) => {
         const file = e.target.files?.[0];
         if (!file || !file.type.startsWith('image/')) return;
         const reader = new FileReader();
         reader.onload = async () => {
-            if (isGroup) {
-                const uploadLink = await uploadToCloudinary(reader.result, '/group_avatars');
-                await changeGroupAvatarApi({ groupID: activeChat.groupID, imageUrl: uploadLink, requesterID: myUserID, token });
-            } else {
-                const uploadLink = await uploadToCloudinary(reader.result, '/avatars');
-                await changeProfilePicApi({ imageUrl: uploadLink, requesterID: myUserID, token });
+            if (reader.result && typeof reader.result === 'string' && activeChat) {
+                // Convert data URL to File
+                const response = await fetch(reader.result);
+                const blob = await response.blob();
+                const imageFile = new File([blob], file.name, { type: file.type });
+                
+                if (isGroup && activeChat.groupID) {
+                    const uploadLink = await uploadToCloudinary(imageFile, '/group_avatars');
+                    await changeGroupAvatarApi({ groupID: activeChat.groupID, imageUrl: uploadLink, requesterID: myUserID || '', token: token || '' });
+                } else {
+                    const uploadLink = await uploadToCloudinary(imageFile, '/avatars');
+                    await changeProfilePicApi({ imageUrl: uploadLink, requesterID: myUserID || '', token: token || '' });
+                }
             }
         };
         reader.readAsDataURL(file);
     };
 
     // Helper to toggle modals
-    const toggleModal = (name, value) => setModals(prev => ({ ...prev, [name]: value }));
+    const toggleModal = (name: string, value: boolean) => setModals((prev: any) => ({ ...prev, [name]: value }));
 
     // Derived Logic
     const filteredMessages = activeChat ? (activeChat.group 
-        ? textMessage.filter(m => m.groupID === activeChat.groupID)
-        : textMessage.filter(m => {
+        ? textMessage.filter((m: Message) => m.groupID === activeChat.groupID)
+        : textMessage.filter((m: Message) => {
             const from = m.fromEmail || m.from;
             const to = m.toEmail || m.to;
             return (from === myEmail && to === activeChat.email) || (from === activeChat.email && to === myEmail);

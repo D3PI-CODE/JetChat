@@ -1,11 +1,20 @@
 import React from 'react';
 import { RiCheckDoubleLine } from "react-icons/ri";
 import { FiShare2 } from 'react-icons/fi';
+import { Message, Chat, User, GroupMember } from '../types';
 
-export default function Textbubble({ messages = [], activeChat = null, users = [], groupMembersMap = {}, onForward = () => {} }) {
+interface TextbubbleProps {
+  messages?: Message[];
+  activeChat?: Chat | null;
+  users?: User[];
+  groupMembersMap?: Record<string, GroupMember[]>;
+  onForward?: (message: Message) => void;
+}
+
+export default function Textbubble({ messages = [], activeChat = null, users = [], groupMembersMap = {}, onForward = () => {} }: TextbubbleProps) {
 
     // Function to parse and highlight mentions in message content
-    const renderMessageWithMentions = (content) => {
+    const renderMessageWithMentions = (content: string) => {
         if (!content) return content;
 
         // Split content by mentions (@username)
