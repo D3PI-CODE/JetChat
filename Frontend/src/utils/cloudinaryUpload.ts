@@ -1,7 +1,7 @@
 import { cld } from "@/config/cloudinary";
 import axios from "axios";
 
-export const uploadToCloudinary = async (file, location) => {
+export const uploadToCloudinary = async (file: File, location?: string) => {
     try {
         const uploadPreset = 'ml_default';
         const url = `https://api.cloudinary.com/v1_1/${cld.getConfig().cloud.cloudName}/upload`;

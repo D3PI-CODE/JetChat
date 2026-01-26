@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import './chat.css';
 import { useChatLogic } from '@/hooks/useChatLogic';
-import Sidebar from '../components/Sidebar.jsx';
-import ChatList from '../components/ChatList.jsx';
-import ChatWindow from '../components/ChatWindow.jsx';
+import Sidebar from '../components/Sidebar.tsx';
+import ChatList from '../components/ChatList.tsx';
+import ChatWindow from '../components/ChatWindow.tsx';
 import { GroupModals, ForwardModal } from '../components/ChatModals';
-import NotificationBanner from '../components/NotificationBanner.jsx';
+import NotificationBanner from '../components/NotificationBanner.tsx';
 
 export default function Chat() {
     const { state, refs, actions } = useChatLogic();

@@ -1,9 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Register from '../pages/register.jsx';
-import Login from '../pages/login.jsx';
-import NotFound from '../pages/NotFound.jsx';
-import { ProtectedRoute } from './protectedRoute.jsx';
-import Chat from '../pages/chat.jsx';
+import Register from '../pages/register.tsx';
+import Login from '../pages/login.tsx';
+import NotFound from '../pages/NotFound.tsx';
+import { ProtectedRoute } from './protectedRoute.tsx';
+import Chat from '../pages/chat.tsx';
 
 export default function AppRouter() {
     return (
