@@ -2,7 +2,7 @@ import { io, messagingDB } from '../../index.js'
 import { UserModel } from '../../models/user.model.js';
 import {GroupModel} from '../../models/Group.model.js';
 
-export const broadcastGroups = async () => {
+export const broadcastGroups = async (): Promise<void> => {
     try {
         const groupModelInstance = new GroupModel(messagingDB);
         const groupModel = groupModelInstance.getGroupModel();
@@ -57,7 +57,7 @@ export const broadcastGroups = async () => {
             };
 
             // add to group's members array (avoid duplicates)
-            if (!ginfo.members.some(m => String(m.id) === String(memberId))) {
+            if (!ginfo.members.some((m: any) => String(m.id) === String(memberId))) {
                 ginfo.members.push(memberObj);
             }
 
@@ -92,12 +92,13 @@ export const broadcastGroups = async () => {
                 if (mappedId) {
                     io.to(String(mappedId)).emit('groups', groupsArr);
                 }
-            } catch (emitErr) {
-                console.error('Error emitting groups to member', memberKey, emitErr && emitErr.message);
+            } catch (emitErr: unknown) {
+                const message = emitErr instanceof Error ? emitErr.message : String(emitErr);
+                console.error('Error emitting groups to member', memberKey, message);
             }
         }
         console.log(`broadcastGroups: emitted groups to ${memberGroupsMap.size} member identifiers`);
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error broadcasting groups:', err);
     }
 };

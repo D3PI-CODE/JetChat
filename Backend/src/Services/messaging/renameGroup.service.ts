@@ -1,8 +1,9 @@
 import { messagingDB } from '../../index.js';
 import { GroupModel } from '../../models/Group.model.js';
+import type { GroupDTO, ServiceResponse } from '../../types/index.js';
 
 
-export const renameGroupService = async (groupDTO) => {
+export const renameGroupService = async (groupDTO: GroupDTO): Promise<ServiceResponse> => {
     const groupID = groupDTO.groupID;
     const newName = groupDTO.newGroupName;
     const requesterId = groupDTO.requesterID;
@@ -24,9 +25,9 @@ export const renameGroupService = async (groupDTO) => {
             { groupName: newName },
             { where: { groupid: groupID } }
         );
-    } catch (dbErr) {
+    } catch (dbErr: unknown) {
         console.error('Failed to rename group in DB:', dbErr);
-        return { error: 'Failed to update DB', details: dbErr.message };
+        return { error: 'Failed to update DB', details: dbErr instanceof Error ? dbErr.message : String(dbErr) };
     }
 
     return { success: true };

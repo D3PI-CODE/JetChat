@@ -2,9 +2,9 @@ import { io, messagingDB } from '../../index.js';
 import { MessageModel } from '../../models/message.model.js';
 import { UserModel } from '../../models/user.model.js';
 import {GroupModel } from '../../models/Group.model.js';
-import { unreadMessageCount } from './unreadMessages.js';
+import { unreadMessageCount } from './UnreadMessages.js';
 
-export const sendMessage = async (socket, data) => {
+export const sendMessage = async (socket: any, data: any): Promise<void> => {
     const messageModel = new MessageModel(messagingDB);
     const userModel = new UserModel(messagingDB);
     const sender = data.fromEmail
@@ -22,7 +22,7 @@ export const sendMessage = async (socket, data) => {
     } else {
         message = await messageModel.createMessage(senderID, receiverID, data.message);
     }
-    let mappedData = {
+    let mappedData: any = {
         id: message.getDataValue("messageid"),
         content: message.getDataValue("content"),
         fromEmail: sender,
@@ -51,8 +51,9 @@ export const sendMessage = async (socket, data) => {
             try {
                 if (senderID) senderProfile = await userModel.getUserModel().findOne({ where: { id: senderID }, raw: true });
                 if (!senderProfile && sender) senderProfile = await userModel.getUserModel().findOne({ where: { email: sender }, raw: true });
-            } catch (profErr) {
-                console.warn('Could not load sender profile for message:', profErr && profErr.message);
+            } catch (profErr: unknown) {
+                const message = profErr instanceof Error ? profErr.message : String(profErr);
+                console.warn('Could not load sender profile for message:', message);
             }
             if (senderProfile) {
                 mappedData.fromUserId = senderProfile.id || senderID || null;
@@ -79,12 +80,13 @@ export const sendMessage = async (socket, data) => {
                 try {
                     io.to(room).emit('receiveMessage', mappedData);
                     unreadMessageCount(socket, {receiverID: memberId});
-                } catch (emitErr) {
-                    console.warn('Failed to emit receiveMessage to room', room, emitErr && emitErr.message);
+                } catch (emitErr: unknown) {
+                    const message = emitErr instanceof Error ? emitErr.message : String(emitErr);
+                    console.warn('Failed to emit receiveMessage to room', room, message);
                 }
             }
             console.log("Message emitted to group members:", groupID, mappedData);
-        } catch (groupErr) {
+        } catch (groupErr: unknown) {
             console.error('Failed to emit group message to members, falling back to broadcast:', groupErr);
             io.emit('receiveMessage', mappedData);
         }
@@ -107,8 +109,9 @@ export const sendMessage = async (socket, data) => {
                 mappedData.fromUsername = null;
                 mappedData.username = sender || null;
             }
-        } catch (profErr) {
-            console.warn('Could not load sender profile for 1-1 message:', profErr && profErr.message);
+        } catch (profErr: unknown) {
+            const message = profErr instanceof Error ? profErr.message : String(profErr);
+            console.warn('Could not load sender profile for 1-1 message:', message);
         }
         const receiverRoom = receiverID ? String(receiverID) : String(receiver);
         io.to(receiverRoom).emit("receiveMessage", mappedData);

@@ -1,7 +1,8 @@
 import { messagingDB } from '../../index.js';
 import { GroupModel } from '../../models/Group.model.js';
+import type { GroupDTO, ServiceResponse } from '../../types/index.js';
 
-export const changeGroupMemberRoleService = async (groupDTO) => {
+export const changeGroupMemberRoleService = async (groupDTO: GroupDTO): Promise<ServiceResponse> => {
     const groupID = groupDTO.groupID;
     const newRole = groupDTO.newRole;
     const memberID = groupDTO.memberID;
@@ -11,7 +12,7 @@ export const changeGroupMemberRoleService = async (groupDTO) => {
         return { error: 'Unauthenticated' }
     }
 
-    if (!['member', 'admin'].includes(newRole.toLowerCase())) {
+    if (!newRole || !['member', 'admin'].includes(newRole.toLowerCase())) {
             return { error: 'Invalid role specified' };
     }
 
@@ -53,9 +54,9 @@ export const changeGroupMemberRoleService = async (groupDTO) => {
             { role: newRole.toLowerCase() },
             { where: { groupID: groupID, memberID: memberID } }
         );
-    } catch (dbErr) {
+    } catch (dbErr: unknown) {
         console.error('Failed to change group member role in DB:', dbErr);
-        return { error: 'Failed to update DB', details: dbErr.message };
+        return { error: 'Failed to update DB', details: dbErr instanceof Error ? dbErr.message : String(dbErr) };
     }
 
     return { success: true };

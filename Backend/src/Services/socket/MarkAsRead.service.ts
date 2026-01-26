@@ -2,7 +2,7 @@ import { io, messagingDB } from '../../index.js';
 import { MessageModel } from '../../models/message.model.js';
 import { UserModel } from '../../models/user.model.js';
 
-export const markAsRead = async (data) => {
+export const markAsRead = async (data: any): Promise<void> => {
     try {
         const messageModel = new MessageModel(messagingDB);
         const userModel = new UserModel(messagingDB);
@@ -40,10 +40,10 @@ export const markAsRead = async (data) => {
             const receiverRoom = receiverID ? String(receiverID) : String(receiver);
             io.to(senderRoom).emit('messageReadAck', payload);
             io.to(receiverRoom).emit('messageReadAck', payload);
-        } catch (emitErr) {
+        } catch (emitErr: unknown) {
             console.error('Error emitting messageReadAck to user rooms:', emitErr);
         }
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error in markAsRead:', err);
     }
 };

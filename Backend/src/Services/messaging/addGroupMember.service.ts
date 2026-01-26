@@ -1,7 +1,8 @@
 import { messagingDB } from '../../index.js';
 import { GroupModel } from '../../models/Group.model.js';
+import type { GroupDTO, ServiceResponse } from '../../types/index.js';
 
-export const addGroupMemberService = async (groupDTO) => {
+export const addGroupMemberService = async (groupDTO: GroupDTO): Promise<ServiceResponse> => {
     const groupID = groupDTO.groupID;
     const memberID = groupDTO.memberID;
     const requesterID = groupDTO.requesterID;
@@ -27,9 +28,9 @@ export const addGroupMemberService = async (groupDTO) => {
 
         const created = await groupMemberModel.create({ groupID: groupID, memberID: memberID, role: 'member' });
         return { success: true, member: created };
-    } catch (dbErr) {
+    } catch (dbErr: unknown) {
         console.error('Failed to add group member in DB:', dbErr);
-        return { error: 'Failed to add member', details: dbErr.message };
+        return { error: 'Failed to add member', details: dbErr instanceof Error ? dbErr.message : String(dbErr) };
     }
 
 };

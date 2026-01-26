@@ -1,9 +1,18 @@
 import { messagingDB } from '../../index.js';
 import { GroupModel } from '../../models/Group.model.js';
+import type { GroupDTO, ServiceResponse } from '../../types/index.js';
 
-export const deleteGroupService = async (groupDTO) => {
+export const deleteGroupService = async (groupDTO: GroupDTO): Promise<ServiceResponse> => {
     const groupID = groupDTO.groupID;
     const requesterId = groupDTO.requesterId;
+
+    if (!groupID) {
+        return { error: 'Missing groupID' };
+    }
+
+    if (!requesterId) {
+        return { error: 'Missing requester ID' };
+    }
 
     try {
         const groupModelInstance = new GroupModel(messagingDB);
@@ -15,8 +24,9 @@ export const deleteGroupService = async (groupDTO) => {
         }
         
         await groupModelInstance.deleteGroup(groupID);
-    } catch (err){
-        return { error: 'Failed to delete group: ' + (err && err.message) };
+    } catch (err: unknown){
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: 'Failed to delete group: ' + message };
     }
     
     return { success: true };

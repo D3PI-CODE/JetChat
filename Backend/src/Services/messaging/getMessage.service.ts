@@ -1,22 +1,23 @@
 import { messagingDB } from '../../index.js';
 import { MessageModel } from '../../models/message.model.js';
 import { UserModel } from '../../models/user.model.js';
+import type { UserDTO, ServiceResponse } from '../../types/index.js';
 
-export const getMessagesService = async (userDTO) => {
+export const getMessagesService = async (userDTO: UserDTO): Promise<ServiceResponse> => {
     const messageModel = new MessageModel(messagingDB);
     const senderID = userDTO.from
     const receiverID = userDTO.to 
     const groupID = userDTO.groupID 
     const fromEmail = userDTO.fromEmail 
     const toEmail = userDTO.toEmail 
-    let SentMessages = [];
-    let ReceivedMessages = [];
+    let SentMessages: any[] = [];
+    let ReceivedMessages: any[] = [];
 
     try {
         if (groupID) {
             // fetch messages for the group and map to a canonical payload shape
             const Messages = await messageModel.getMsgByGroupID(groupID);
-            const groupPayload = Messages.map(msg => {
+            const groupPayload = Messages.map((msg: any) => {
                 const id = (typeof msg.getDataValue === 'function') ? msg.getDataValue('messageid') : msg.messageid || msg.id;
                 const createdAt = (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : msg.createdAt || msg.timestamp;
                 const senderOfMsg = (typeof msg.getDataValue === 'function') ? msg.getDataValue('senderID') : msg.senderID;
@@ -35,27 +36,32 @@ export const getMessagesService = async (userDTO) => {
             });
 
             // sort by timestamp to ensure chronological order
-            groupPayload.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            groupPayload.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
             // split for backwards compatibility with downstream logic
-            SentMessages = groupPayload.filter(m => m.type === 'sent');
-            ReceivedMessages = groupPayload.filter(m => m.type === 'received');
+            SentMessages = groupPayload.filter((m: any) => m.type === 'sent');
+            ReceivedMessages = groupPayload.filter((m: any) => m.type === 'received');
 
             console.log('Marking group messages as read for', fromEmail, 'in group', groupID);
         } else {
-            SentMessages = await messageModel.getMsgByUserIDs(senderID, receiverID);
-            ReceivedMessages = await messageModel.getMsgByUserIDs(receiverID, senderID);
+            if (senderID && receiverID) {
+                SentMessages = await messageModel.getMsgByUserIDs(senderID, receiverID);
+                ReceivedMessages = await messageModel.getMsgByUserIDs(receiverID, senderID);
+            }
         }
         // Safely mark received messages as read. Messages may be plain objects (with `id`) or Sequelize instances (with `messageid` or getDataValue).
-        ReceivedMessages.forEach(msg => {
+        ReceivedMessages.forEach((msg: any) => {
             const mid = msg && (msg.messageid || msg.id || (typeof msg.getDataValue === 'function' ? msg.getDataValue('messageid') : undefined));
             if (mid) {
-                messageModel.updateReadStatus(mid, true).catch(err => console.warn('Failed to update read status for', mid, err && err.message));
+                messageModel.updateReadStatus(mid, true).catch((err: unknown) => {
+                    const errorMsg = err instanceof Error ? err.message : String(err);
+                    console.warn('Failed to update read status for', mid, errorMsg);
+                });
             } else {
                 console.warn('Skipping updateReadStatus: could not resolve message id for', msg);
             }
         });
-        const payloadSent = (SentMessages || []).map(msg => {
+        const payloadSent = (SentMessages || []).map((msg: any) => {
             const id = (typeof msg.getDataValue === 'function') ? msg.getDataValue('messageid') : (msg.id || msg.messageid);
             const timestamp = (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : (msg.timestamp || msg.createdAt);
             return {
@@ -70,7 +76,7 @@ export const getMessagesService = async (userDTO) => {
                 groupID: (typeof msg.getDataValue === 'function') ? msg.getDataValue('groupID') : msg.groupID,
             };
         });
-        const payloadReceived = (ReceivedMessages || []).map(msg => {
+        const payloadReceived = (ReceivedMessages || []).map((msg: any) => {
             const id = (typeof msg.getDataValue === 'function') ? msg.getDataValue('messageid') : (msg.id || msg.messageid);
             const timestamp = (typeof msg.getDataValue === 'function') ? msg.getDataValue('createdAt') : (msg.timestamp || msg.createdAt);
             return {
@@ -85,19 +91,19 @@ export const getMessagesService = async (userDTO) => {
                 groupID: (typeof msg.getDataValue === 'function') ? msg.getDataValue('groupID') : msg.groupID,
             };
         });
-        const mergedPayload = [
+        const mergedPayload: any[] = [
             ...payloadSent,
             ...payloadReceived
         ];
-        mergedPayload.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        mergedPayload.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
         // Enrich messages with sender profile info (avatar, userId, name) so clients
         // can display avatars for historical messages immediately.
         try {
             const userModel = new UserModel(messagingDB);
             // collect unique sender ids and emails from merged payload
-            const ids = Array.from(new Set((mergedPayload || []).map(m => m.senderID).filter(Boolean)));
-            const emails = Array.from(new Set((mergedPayload || []).map(m => m.from).filter(Boolean)));
+            const ids = Array.from(new Set((mergedPayload || []).map((m: any) => m.senderID).filter(Boolean)));
+            const emails = Array.from(new Set((mergedPayload || []).map((m: any) => m.from).filter(Boolean)));
             const usersById = new Map();
             const usersByEmail = new Map();
             if (ids.length > 0) {
@@ -124,13 +130,14 @@ export const getMessagesService = async (userDTO) => {
                     // ignore per-message enrichment errors
                 }
             }
-        } catch (enrichErr) {
-            console.warn('Could not enrich previous messages with user profiles:', enrichErr && enrichErr.message);
+        } catch (enrichErr: unknown) {
+            const message = enrichErr instanceof Error ? enrichErr.message : String(enrichErr);
+            console.warn('Could not enrich previous messages with user profiles:', message);
         }
 
         // Diagnostic & fallback: if any merged message still lacks an avatar, try per-message lookup
         try {
-            const missing = (mergedPayload || []).filter(m => !m.fromAvatar && (m.senderID || m.from));
+            const missing = (mergedPayload || []).filter((m: any) => !m.fromAvatar && (m.senderID || m.from));
             if (missing.length > 0) {
                 console.log(`getMessages: ${missing.length} messages missing fromAvatar; attempting per-message lookup`);
                 const userModel = new UserModel(messagingDB);
@@ -150,16 +157,20 @@ export const getMessagesService = async (userDTO) => {
                                 m.fromUsername = u.username || null;
                                 m.username = u.username || u.email || m.username || null;
                         }
-                    } catch (innerErr) {
-                        console.warn('Per-message enrichment failed for', m && (m.id || m.senderID || m.from), innerErr && innerErr.message);
+                    } catch (innerErr: unknown) {
+                        const errorMsg = innerErr instanceof Error ? innerErr.message : String(innerErr);
+                        console.warn('Per-message enrichment failed for', m && (m.id || m.senderID || m.from), errorMsg);
                     }
                 }
             }
-        } catch (fbErr) {
-            console.warn('Fallback enrichment failed:', fbErr && fbErr.message);
+        } catch (fbErr: unknown) {
+            const message = fbErr instanceof Error ? fbErr.message : String(fbErr);
+            console.warn('Fallback enrichment failed:', message);
         }
-        return mergedPayload;
-    } catch (err) {
+        return { success: true, messages: mergedPayload };
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
         console.error('Error in getMessagesService:', err);
+        return { error: 'Failed to get messages', details: message };
     }
 }

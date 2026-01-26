@@ -1,7 +1,8 @@
 import { messagingDB } from '../../index.js';
 import { GroupModel } from '../../models/Group.model.js';
+import type { GroupDTO, ServiceResponse } from '../../types/index.js';
 
-export const leaveGroupService = async (groupDTO) => {
+export const leaveGroupService = async (groupDTO: GroupDTO): Promise<ServiceResponse> => {
     const groupID = groupDTO.groupID;
     const requesterID = groupDTO.requesterID;
 
@@ -26,9 +27,9 @@ export const leaveGroupService = async (groupDTO) => {
         await groupMemberModel.destroy({
             where: { groupID: groupID, memberID: requesterID }
         });
-    } catch (dbErr) {
+    } catch (dbErr: unknown) {
         console.error('Failed to leave group in DB:', dbErr);
-        return { error: 'Failed to update DB', details: dbErr.message };
+        return { error: 'Failed to update DB', details: dbErr instanceof Error ? dbErr.message : String(dbErr) };
     }
 
     return { success: true };

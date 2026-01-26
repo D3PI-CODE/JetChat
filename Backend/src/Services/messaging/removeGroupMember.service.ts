@@ -1,7 +1,8 @@
 import { GroupModel } from '../../models/Group.model.js';
+import type { GroupDTO, ServiceResponse } from '../../types/index.js';
 import { messagingDB } from '../../index.js';
 
-export const removeGroupMemberService = async (groupDTO) => {
+export const removeGroupMemberService = async (groupDTO: GroupDTO): Promise<ServiceResponse> => {
     const groupID = groupDTO.groupID;
     const memberID = groupDTO.memberID;
     const requesterID = groupDTO.requesterID;
@@ -34,9 +35,9 @@ export const removeGroupMemberService = async (groupDTO) => {
         }
 
         await groupMemberModel.destroy({ where: { groupID: groupID, memberID: memberID } });
-    } catch (dbErr) {
+    } catch (dbErr: unknown) {
         console.error('Failed to remove group member in DB:', dbErr);
-        return { error: 'Failed to update DB', details: dbErr.message };
+        return { error: 'Failed to update DB', details: dbErr instanceof Error ? dbErr.message : String(dbErr) };
     }
     
     return { success: true };
