@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import express from 'express';
+import express, { type Request, type Response } from 'express';
 import authRoutes from './routes/auth.routes.js';
 import messagingRoutes from './routes/messaging.routes.js';
 import cors from 'cors';
@@ -110,7 +110,7 @@ try {
   } else {
     console.log('Admin user already exists');
   }
-} catch (error) {
+} catch (error: unknown) {
   console.error('Error creating test admin user:', error);
 }
 
@@ -147,9 +147,9 @@ const authenticate = async (email: string, password: string) => {
     return {
       email: email,
       id: credUserId,
-      role: 'admin' // You can extend this to have different admin roles
+      role: 'admin'
     };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Admin authentication error:', error);
     return null;
   }
@@ -226,15 +226,15 @@ const adminRouter = (AdminJSExpress as any).buildAuthenticatedRouter(admin, {
   secret: process.env.ADMIN_SESSION_SECRET || 'admin-session-secret-change-in-production',
 });
 
-app.post('/admin/login', async (req, res) => {
+app.post('/admin/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
   try {
     const authenticateResult = await authenticate(email, password);
     if (authenticateResult) {
       // Set session data for AdminJS
-      req.session.adminUser = authenticateResult;
-      req.session.isAdmin = true;
+      (req.session as any).adminUser = authenticateResult;
+      (req.session as any).isAdmin = true;
 
       // Redirect to admin dashboard
       return res.redirect('/admin');
@@ -242,7 +242,7 @@ app.post('/admin/login', async (req, res) => {
       // Authentication failed
       return res.redirect('/admin/login?error=Invalid email or password');
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Login error:', error);
     return res.redirect('/admin/login?error=Login failed. Please try again.');
   }

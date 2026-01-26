@@ -11,10 +11,10 @@ export const tokenAuth = (req: Request, res: Response, next: NextFunction) => {
 
     const JWT_SECRET: string = process.env.JWT_SECRET as string;
     
-    jwt.verify(token, JWT_SECRET, (err, payload) => {
+    jwt.verify(token, JWT_SECRET, (err: unknown, payload: unknown) => {
         if (err) {
-            console.error('tokenAuth verify error:', err && err.message);
-            return res.status(403).json({ error: 'Invalid or expired token', details: err && err.message });
+            console.error('tokenAuth verify error:', err instanceof Error ? err.message : String(err));
+            return res.status(403).json({ error: 'Invalid or expired token', details: err instanceof Error ? err.message : String(err) });
         }
         const p = (payload || {}) as any;
         const normalized = {

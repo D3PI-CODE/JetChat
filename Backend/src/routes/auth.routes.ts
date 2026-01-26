@@ -1,4 +1,4 @@
-import express, { response } from 'express';
+import express from 'express';
 import { login, register, validateToken } from '../controllers/auth.controllers.js';
 import { tokenAuth } from '../middleware/tokenAuth.js';
 

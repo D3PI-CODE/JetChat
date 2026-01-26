@@ -1,6 +1,6 @@
 import { Sequelize } from 'sequelize';
 
-export function initializeMessagingDB() {
+export function initializeMessagingDB(): Sequelize {
     const sequelize = new Sequelize({
         dialect : 'postgres',
         host : process.env.DB_HOST

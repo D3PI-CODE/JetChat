@@ -2,7 +2,7 @@ import { io, messagingDB } from '../../index.js';
 import { UserModel } from '../../models/user.model.js';
 import redisClient from '../../config/RedisInit.js';
 
-export const broadcastUserIds = async (socket: any): Promise<void> => {
+export const broadcastUserIds = async (socket?: any): Promise<void> => {
     try {
         const userModel = new UserModel(messagingDB);
         const allUsers = await userModel.getUserModel().findAll({ raw: true });

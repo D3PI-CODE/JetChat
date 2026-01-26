@@ -1,3 +1,4 @@
+import type { Request, Response } from 'express';
 import { io } from '../index.js';
 import { getMessagesService } from '../Services/messaging/getMessage.service.js';
 import { createGroupService } from '../Services/messaging/createGroup.service.js';
@@ -10,9 +11,9 @@ import { leaveGroupService } from '../Services/messaging/leaveGroup.service.js';
 import { removeGroupMemberService } from '../Services/messaging/removeGroupMember.service.js';
 import { changeProfilePicService } from '../Services/messaging/changeProfilePic.service.js';
 import { changeGroupAvatarService } from '../Services/messaging/changeGroupAvatar.service.js';
-import { broadcastUserIds } from '../Services/socket/broadcastUserIds.service.js';
+import { broadcastUserIds } from '../Services/socket/BroadcastUserIDs.service.js';
 
-export const getMessages = async (req, res) => {
+export const getMessages = async (req: Request, res: Response) => {
     try {
         // Support both GET (query) and POST (body) callers by merging query into body
         const userDTO = { ...req.body, ...req.query };
@@ -35,13 +36,13 @@ export const getMessages = async (req, res) => {
         if (receiverID) {
             io.to(String(receiverID)).emit("messageReadAck", { fromEmail: toEmail, toEmail: fromEmail });
         }
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error in getMessages:', err);
-        res.json({ error: err && err.message || 'getMessages failed' });
+        res.json({ error: err instanceof Error ? err.message : 'getMessages failed' });
     }
 };
 
-export const createGroup = async (req, res) => {
+export const createGroup = async (req: Request, res: Response) => {
     try {
         const groupDTO = { ... req.body }
         const groupName = groupDTO.groupName;
@@ -59,18 +60,18 @@ export const createGroup = async (req, res) => {
         // Broadcast updated group list to all connected clients
         try {
             await broadcastGroups();
-        } catch (broadcastErr) {
-            res.status(500).json({ error: 'Group created but broadcasting failed: ' + (broadcastErr && broadcastErr.message) });
+        } catch (broadcastErr: unknown) {
+            res.status(500).json({ error: 'Group created but broadcasting failed: ' + (broadcastErr instanceof Error ? broadcastErr.message : String(broadcastErr)) });
             return;
         }
 
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error in createGroup:', err);
-        res.status(500).json({ error: err && err.message || 'createGroup failed' });
+        res.status(500).json({ error: err instanceof Error ? err.message : 'createGroup failed' });
     }
 };
 
-export const deleteGroup = async (req, res) => {
+export const deleteGroup = async (req: Request, res: Response) => {
     try {
         const groupDTO = { ... req.body }
         const groupID = groupDTO.groupID;
@@ -90,18 +91,18 @@ export const deleteGroup = async (req, res) => {
 
         try { 
             await broadcastGroups(); 
-        } catch (bErr) { 
-            res.status(500).json({ error: 'Group deleted but broadcasting failed: ' + (bErr && bErr.message) }); 
+        } catch (bErr: unknown) { 
+            res.status(500).json({ error: 'Group deleted but broadcasting failed: ' + (bErr instanceof Error ? bErr.message : String(bErr)) }); 
             return;
         }
 
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error in deleteGroup:', err);
-        res.status(500).json({ error: err && err.message || 'deleteGroup failed' });
+        res.status(500).json({ error: err instanceof Error ? err.message : 'deleteGroup failed' });
     }
 };
 
-export const renameGroup = async (req, res) => {
+export const renameGroup = async (req: Request, res: Response) => {
     try {
         const groupDTO = { ... req.body }
         const groupID = groupDTO.groupID;
@@ -122,17 +123,17 @@ export const renameGroup = async (req, res) => {
 
         try {
             await broadcastGroups();
-        } catch (broadcastErr) {
-            return res.status(500).json({ error: 'Group renamed but broadcasting failed: ' + (broadcastErr && broadcastErr.message) });
+        } catch (broadcastErr: unknown) {
+            return res.status(500).json({ error: 'Group renamed but broadcasting failed: ' + (broadcastErr instanceof Error ? broadcastErr.message : String(broadcastErr)) });
         }
         
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error in renameGroup:', err);
-        res.status(500).json({ error: err && err.message || 'renameGroup failed' });
+        res.status(500).json({ error: err instanceof Error ? err.message : 'renameGroup failed' });
     }
 };
 
-export const addGroupMember = async (req, res) => {
+export const addGroupMember = async (req: Request, res: Response) => {
     try {
         const groupDTO = { ... req.body }
         const groupID = groupDTO.groupID;
@@ -153,17 +154,17 @@ export const addGroupMember = async (req, res) => {
 
         try { 
             await broadcastGroups(); 
-        } catch (bErr) {
-            return res.status(500).json({ error: 'Member added but broadcasting failed: ' + (bErr && bErr.message) }); 
+        } catch (bErr: unknown) {
+            return res.status(500).json({ error: 'Member added but broadcasting failed: ' + (bErr instanceof Error ? bErr.message : String(bErr)) }); 
         }
 
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error in addtoGroup:', err);
-        res.status(500).json({ error: err && err.message || 'addtoGroup failed' });
+        res.status(500).json({ error: err instanceof Error ? err.message : 'addtoGroup failed' });
     }
 };
 
-export const changeGroupMemberRole = async (req, res) => {
+export const changeGroupMemberRole = async (req: Request, res: Response) => {
     try {
         const groupDTO = { ... req.body }
         const groupID = groupDTO.groupID;
@@ -187,17 +188,17 @@ export const changeGroupMemberRole = async (req, res) => {
         // Broadcast updated groups to affected users so their lists update immediately
         try {
             await broadcastGroups();
-        } catch (bErr) {
-            return res.status(500).json({ error: 'Role changed but broadcasting failed: ' + (bErr && bErr.message) });
+        } catch (bErr: unknown) {
+            return res.status(500).json({ error: 'Role changed but broadcasting failed: ' + (bErr instanceof Error ? bErr.message : String(bErr)) });
         }
 
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error in changeRole:', err);
-        res.status(500).json({ error: err && err.message || 'changeRole failed' });
+        res.status(500).json({ error: err instanceof Error ? err.message : 'changeRole failed' });
     }
 };
 
-export const leaveGroup = async (req, res) => {
+export const leaveGroup = async (req: Request, res: Response) => {
     try {
         const groupDTO = { ... req.body }
         const groupID = groupDTO.groupID;
@@ -219,15 +220,15 @@ export const leaveGroup = async (req, res) => {
 
         try {
             await broadcastGroups();
-        } catch (bErr) {
-            return res.status(500).json({ error: 'Left group but broadcasting failed: ' + (bErr && bErr.message) });
+        } catch (bErr: unknown) {
+            return res.status(500).json({ error: 'Left group but broadcasting failed: ' + (bErr instanceof Error ? bErr.message : String(bErr)) });
         }
-    } catch (err) {
-        return res.status(500).json({ error: err && err.message || 'leaveGroup failed' });
+    } catch (err: unknown) {
+        return res.status(500).json({ error: err instanceof Error ? err.message : 'leaveGroup failed' });
     }
 };
 
-export const removeGroupMember = async (req, res) => {
+export const removeGroupMember = async (req: Request, res: Response) => {
     try {
         const groupDTO = { ... req.body }
         const groupID = groupDTO.groupID;
@@ -250,17 +251,17 @@ export const removeGroupMember = async (req, res) => {
         // Broadcast updated groups to affected users so their lists update immediately
         try { 
             await broadcastGroups(); 
-        } catch (bErr) {
-            return res.status(500).json({ error: 'Member removed but broadcasting failed: ' + (bErr && bErr.message) });
+        } catch (bErr: unknown) {
+            return res.status(500).json({ error: 'Member removed but broadcasting failed: ' + (bErr instanceof Error ? bErr.message : String(bErr)) });
         }
 
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error in removeFromGroup:', err);
-        return res.status(500).json({ error: err && err.message || 'removeFromGroup failed' });
+        return res.status(500).json({ error: err instanceof Error ? err.message : 'removeFromGroup failed' });
     }
 }
 
-export const changeProfilePic = async (req, res) => {
+export const changeProfilePic = async (req: Request, res: Response) => {
     try {
         const userDTO = { ... req.body }
         const requesterID = userDTO.requesterID;
@@ -276,17 +277,17 @@ export const changeProfilePic = async (req, res) => {
 
         try {
             broadcastUserIds();
-        } catch (dbErr) {
+        } catch (dbErr: unknown) {
             console.error('Failed to update user avatar in DB:', dbErr);
-            return res.status(500).json({ error: 'Failed to broadcast user updates', details: dbErr.message });
+            return res.status(500).json({ error: 'Failed to broadcast user updates', details: dbErr instanceof Error ? dbErr.message : String(dbErr) });
         }
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Cloudinary upload error:', err);
-        return res.status(500).json({ error: err && err.message || 'changeProfilePic failed' });
+        return res.status(500).json({ error: err instanceof Error ? err.message : 'changeProfilePic failed' });
     }
 }
 
-export const changeGroupAvatar = async (req, res) => {
+export const changeGroupAvatar = async (req: Request, res: Response) => {
     try {
         const groupDTO = { ... req.body }
         const groupID = groupDTO.groupID;
@@ -303,12 +304,12 @@ export const changeGroupAvatar = async (req, res) => {
         // Broadcast updated groups to all connected clients
         try {
             await broadcastGroups();
-        } catch (broadcastErr) {
-            return res.status(500).json({ error: 'Group avatar changed but broadcasting failed: ' + (broadcastErr && broadcastErr.message) });
+        } catch (broadcastErr: unknown) {
+            return res.status(500).json({ error: 'Group avatar changed but broadcasting failed: ' + (broadcastErr instanceof Error ? broadcastErr.message : String(broadcastErr)) });
         }
 
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error in changeGroupAvatar:', err);
-        return res.status(500).json({ error: err && err.message || 'changeGroupAvatar failed' });
+        return res.status(500).json({ error: err instanceof Error ? err.message : 'changeGroupAvatar failed' });
     }
 }

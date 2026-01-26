@@ -1,53 +1,23 @@
+import type { Socket } from 'socket.io';
 import { io, messagingDB } from '../index.js';
 import { MessageModel } from '../models/message.model.js';
 import { UserModel } from '../models/user.model.js';
 import Cloudinary from '../config/CloudinaryInit.js';
 import { GroupModel } from '../models/Group.model.js';
-import { broadcastUserIds } from '../Services/socket/broadcastUserIds.service.js';
+import { broadcastUserIds } from '../Services/socket/BroadcastUserIDs.service.js';
 import { broadcastGroups } from '../Services/socket/BroadcastGroups.service.js';
 import { markAsRead } from '../Services/socket/MarkAsRead.service.js';
 import { sendMessage } from '../Services/socket/SendMessage.js';
 import { mentionUserInGroup } from '../Services/socket/mentionUser.js';
 
-const groupTypingMap = new Map(); // groupID -> Map<senderKey, { id, username }>
+const groupTypingMap = new Map<string, Map<string, { id: string | null; username: string | null }>>(); // groupID -> Map<senderKey, { id, username }>
 
-// Broadcast current users and their online status to all connected sockets.
-// export const broadcastUserIds = async (socket) => {
-//     try {
-//         const userModel = new UserModel(messagingDB);
-//         const allUsers = await userModel.getUserModel().findAll({ raw: true });
-//         try {
-//             await redisClient.del("user:online");
-//         } catch (e) {
-//             console.warn('Redis DEL user:online failed:', e && e.message);
-//         }
-//         for (const s of Array.from(io.of("/").sockets.values())) {
-//             try {
-//                 if (s.userID) await redisClient.SADD("user:online", String(s.userID));
-//                 else if (s.email) await redisClient.SADD("user:online", s.email);
-//             } catch (e) {
-//                 console.warn('Redis SADD failed for user presence:', e && e.message);
-//             }
-//         }
+interface CustomSocket extends Socket {
+    userID?: string | null;
+    email?: string | null;
+}
 
-//         const userArr = await Promise.all((allUsers || []).map(async u => ({
-//             id: u.id,
-//             email: u.email,
-//             username: u.username ?? u.email,
-//             avatarUrl: u.avatarUrl || null,
-//             online: await redisClient.SISMEMBER("user:online", String(u.id)) === 1 ? true : false,
-//         })));
-        
-//         console.log("Broadcasting users (with online status):", userArr);
-//         io.emit("users", userArr);
-//     } catch (err) {
-//         console.error('Error broadcasting users:', err);
-//     }
-// };
-
-//const broadcastUserIds = broadcastUserIds(socket);
-
-export const connection =  async (socket) => {
+export const connection = async (socket: CustomSocket) => {
     console.log("Socket connected, socket id: " + socket.id + " userID: " + socket.userID);
     console.log("User email: " + socket.email);
     // Try to resolve the canonical DB id for this connection. The middleware
@@ -60,7 +30,7 @@ export const connection =  async (socket) => {
         } else {
             console.warn('Could not resolve canonical user id for socket; not joining user room.', { socketId: socket.id, providedUserID: socket.userID, email: socket.email });
         }
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error resolving canonical user id for socket:', err);
     }
 
@@ -70,7 +40,7 @@ export const connection =  async (socket) => {
 
 
     // Typing indicator handlers
-    socket.on('typingStart', async (data) => {
+    socket.on('typingStart', async (data: any) => {
         try {
             const fromUserId = data && data.fromUserId;
             const fromEmail = data && data.fromEmail;
@@ -92,14 +62,14 @@ export const connection =  async (socket) => {
                     const members = await groupMemberModel.findAll({ where: { groupID } });
                     const typingUsers = Array.from(map.values());
                     for (const m of members) {
-                        const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
+                        const memberId = (m as any).memberID || (typeof (m as any).getDataValue === 'function' ? (m as any).getDataValue('memberID') : undefined);
                         if (!memberId) continue;
                         // skip sender
                         if (String(memberId) === String(senderKey)) continue;
                         try { io.to(String(memberId)).emit('typingUpdate', { groupID, typingUsers }); } catch (e) {}
                     }
-                } catch (e) {
-                    console.warn('typingStart: could not notify group members', e && e.message);
+                } catch (e: unknown) {
+                    console.warn('typingStart: could not notify group members', e instanceof Error ? e.message : String(e));
                 }
             } else {
                 // Private chat: notify single recipient room (toEmail or toUserId must be provided)
@@ -109,15 +79,15 @@ export const connection =  async (socket) => {
                 if (receiverRoom) {
                     try {
                         io.to(receiverRoom).emit('typingUpdate', { chatKey: String(fromUserId || fromEmail || fromUsername || socket.userID || socket.email), typingUsers: [{ id: fromUserId || fromEmail || null, username: fromUsername || fromEmail || null }] });
-                    } catch (e) { console.warn('typingStart private emit failed', e && e.message); }
+                    } catch (e: unknown) { console.warn('typingStart private emit failed', e instanceof Error ? e.message : String(e)); }
                 }
             }
-        } catch (err) {
-            console.error('Error in typingStart handler:', err && err.message);
+        } catch (err: unknown) {
+            console.error('Error in typingStart handler:', err instanceof Error ? err.message : String(err));
         }
     });
 
-    socket.on('typingStop', async (data) => {
+    socket.on('typingStop', async (data: any) => {
         try {
             const fromUserId = data && data.fromUserId;
             const fromEmail = data && data.fromEmail;
@@ -136,12 +106,12 @@ export const connection =  async (socket) => {
                         const groupMemberModel = groupModelInstance.GroupMember;
                         const members = await groupMemberModel.findAll({ where: { groupID } });
                         for (const m of members) {
-                            const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
+                            const memberId = (m as any).memberID || (typeof (m as any).getDataValue === 'function' ? (m as any).getDataValue('memberID') : undefined);
                             if (!memberId) continue;
                             try { io.to(String(memberId)).emit('typingUpdate', { groupID, typingUsers }); } catch (e) {}
                         }
-                    } catch (e) {
-                        console.warn('typingStop: could not notify group members', e && e.message);
+                    } catch (e: unknown) {
+                        console.warn('typingStop: could not notify group members', e instanceof Error ? e.message : String(e));
                     }
                 }
             } else {
@@ -151,44 +121,44 @@ export const connection =  async (socket) => {
                 if (receiverRoom) {
                     try {
                         io.to(receiverRoom).emit('typingUpdate', { chatKey: String(fromUserId || fromEmail || fromUsername || socket.userID || socket.email), typingUsers: [] });
-                    } catch (e) { console.warn('typingStop private emit failed', e && e.message); }
+                    } catch (e: unknown) { console.warn('typingStop private emit failed', e instanceof Error ? e.message : String(e)); }
                 }
             }
-        } catch (err) {
-            console.error('Error in typingStop handler:', err && err.message);
+        } catch (err: unknown) {
+            console.error('Error in typingStop handler:', err instanceof Error ? err.message : String(err));
         }
     });
 
-    socket.on("changeProfilePic", (data) => changeProfilePic(socket, data));
+    socket.on("changeProfilePic", (data: any) => changeProfilePic(socket, data));
 
-    socket.on("changeGroupAvatar", (data) => changeGroupAvatar(socket, data));
+    socket.on("changeGroupAvatar", (data: any) => changeGroupAvatar(socket, data));
     // Mention user in a group
-    socket.on('mentionUser', (data) => {
+    socket.on('mentionUser', (data: any) => {
         try {
             mentionUserInGroup(socket, data);
-        } catch (err) {
-            console.error('Error handling mentionUser event:', err && err.message);
+        } catch (err: unknown) {
+            console.error('Error handling mentionUser event:', err instanceof Error ? err.message : String(err));
         }
     });
     
     // Message send handler - persist and route messages
-    socket.on('sendMessage', async (data) => {
+    socket.on('sendMessage', async (data: any) => {
         try {
             console.log('sendMessage event received from socket', socket.id, 'payload:', { groupID: data?.groupID, from: data?.fromEmail, to: data?.toEmail });
             await sendMessage(socket, data);
-        } catch (err) {
-            console.error('Error handling sendMessage event:', err && err.message);
-            try { socket.emit('sendMessageError', { error: err && err.message || 'sendMessage failed' }); } catch (e) {}
+        } catch (err: unknown) {
+            console.error('Error handling sendMessage event:', err instanceof Error ? err.message : String(err));
+            try { socket.emit('sendMessageError', { error: err instanceof Error ? err.message : 'sendMessage failed' }); } catch (e) {}
         }
     });
 
     // Mark-as-read handler - update DB and notify peers
-    socket.on('markAsRead', async (data) => {
+    socket.on('markAsRead', async (data: any) => {
         try {
             await markAsRead(data);
-        } catch (err) {
-            console.error('Error handling markAsRead event:', err && err.message);
-            try { socket.emit('markAsReadError', { error: err && err.message || 'markAsRead failed' }); } catch (e) {}
+        } catch (err: unknown) {
+            console.error('Error handling markAsRead event:', err instanceof Error ? err.message : String(err));
+            try { socket.emit('markAsReadError', { error: err instanceof Error ? err.message : 'markAsRead failed' }); } catch (e) {}
         }
     });
     
@@ -209,7 +179,7 @@ export const connection =  async (socket) => {
                                 const groupModelInstance = new GroupModel(messagingDB);
                                 const members = await groupModelInstance.GroupMember.findAll({ where: { groupID: gid } });
                                 for (const m of members) {
-                                    const memberId = m && (m.memberID || (typeof m.getDataValue === 'function' ? m.getDataValue('memberID') : undefined));
+                                    const memberId = (m as any).memberID || (typeof (m as any).getDataValue === 'function' ? (m as any).getDataValue('memberID') : undefined);
                                     if (!memberId) continue;
                                     try { io.to(String(memberId)).emit('typingUpdate', { groupID: gid, typingUsers }); } catch (e) {}
                                 }
@@ -223,7 +193,7 @@ export const connection =  async (socket) => {
     });
 };
 
-export const changeProfilePic = async (socket, data) => {
+export const changeProfilePic = async (socket: CustomSocket, data: any) => {
     try {
         console.log('changeProfilePic invoked by', socket.id, 'socket.email=', socket.email, 'payloadEmail=', data?.email ?? '(none)');
         if (!data || !data.imageData || !data.email) {
@@ -305,17 +275,17 @@ export const changeProfilePic = async (socket, data) => {
 
             // ack back to the requesting socket with the new URL
             socket.emit('profilePicUpdated', { email: data.email, avatarUrl: imageUrl });
-        } catch (dbErr) {
+        } catch (dbErr: unknown) {
             console.error('Failed to update user avatar in DB:', dbErr);
-            socket.emit('profilePicUpdateError', { error: 'Failed to update DB', details: dbErr.message });
+            socket.emit('profilePicUpdateError', { error: 'Failed to update DB', details: dbErr instanceof Error ? dbErr.message : String(dbErr) });
         }
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Cloudinary upload error:', err);
-        socket?.emit?.('profilePicUpdateError', { error: 'Cloudinary upload failed', details: err.message });
+        socket?.emit?.('profilePicUpdateError', { error: 'Cloudinary upload failed', details: err instanceof Error ? err.message : String(err) });
     }
 }
 
-const changeGroupAvatar = async (socket, data) => {
+const changeGroupAvatar = async (socket: CustomSocket, data: any) => {
     try {
         const groupID = data && data.groupID;
         if (!groupID) {
@@ -366,21 +336,21 @@ const changeGroupAvatar = async (socket, data) => {
         // update their UI immediately. broadcastGroups will also run below.
         try {
             io.emit('changeGroupAvatarSuccess', { groupID, groupAvatarUrl: imageUrl, groupAvatar: imageUrl });
-        } catch (e) {
-            console.warn('Global emit changeGroupAvatarSuccess failed:', e && e.message);
+        } catch (e: unknown) {
+            console.warn('Global emit changeGroupAvatarSuccess failed:', e instanceof Error ? e.message : String(e));
         }
         console.log(`Group avatar updated successfully: groupID ${groupID}`);
 
         // Broadcast updated groups to all connected clients
         try {
             await broadcastGroups();
-        } catch (broadcastErr) {
-            console.warn('Failed to broadcast groups after changing avatar:', broadcastErr && broadcastErr.message);
+        } catch (broadcastErr: unknown) {
+            console.warn('Failed to broadcast groups after changing avatar:', broadcastErr instanceof Error ? broadcastErr.message : String(broadcastErr));
         }
 
-    } catch (err) {
+    } catch (err: unknown) {
         console.error('Error in changeGroupAvatar:', err);
-        try { socket.emit('changeGroupAvatarError', { error: err && err.message || 'changeGroupAvatar failed' }); } catch (e) {}
+        try { socket.emit('changeGroupAvatarError', { error: err instanceof Error ? err.message : 'changeGroupAvatar failed' }); } catch (e) {}
     }
 };
 

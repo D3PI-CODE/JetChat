@@ -1,6 +1,6 @@
 import { Sequelize } from 'sequelize';
 
-export function initializeCredentialsDB() {
+export function initializeCredentialsDB(): Sequelize {
     const sequelize = new Sequelize({
         dialect : 'postgres',
         host : process.env.DB_HOST
@@ -15,7 +15,7 @@ export function initializeCredentialsDB() {
     }) ;
     sequelize.authenticate().then(() => {
         console.log(`Connection to ${sequelize.getDatabaseName()} has been established successfully.`);
-    }).catch((error) => {
+    }).catch((error: unknown) => {
         console.error(`Unable to connect to the ${sequelize.getDatabaseName()} database:`, error);
     });
     return sequelize;
